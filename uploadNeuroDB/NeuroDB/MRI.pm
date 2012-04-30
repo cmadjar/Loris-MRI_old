@@ -43,6 +43,7 @@ use Data::Dumper;
 use Carp;
 use Time::Local;
 use FindBin;
+use POSIX qw(strftime);
 
 $VERSION = 0.2;
 @ISA = qw(Exporter);
@@ -390,7 +391,7 @@ Returns: Textual name of scan type
 =cut
 
 sub identify_scan_db {
-    my ($psc, $objective, $fileref, $dbhr) = @_;
+    my ($psc, $objective, $fileref, $dbhr,$minc_location) = @_;
 
     # get parameters from minc header
     my $tr = $${fileref}->getParameter('repetition_time');
@@ -403,7 +404,7 @@ sub identify_scan_db {
     my $xstep = $${fileref}->getParameter('xstep');
     my $ystep = $${fileref}->getParameter('ystep');
     my $zstep = $${fileref}->getParameter('zstep');
-    
+    my $time = $${fileref}->getParameter('time');
     my $xspace = $${fileref}->getParameter('xspace');
     my $yspace = $${fileref}->getParameter('yspace');
     my $zspace = $${fileref}->getParameter('zspace');
@@ -444,7 +445,7 @@ sub identify_scan_db {
     
     # get the list of protocols for a site their scanner and subproject
     $query = "SELECT Scan_type, Objective, ScannerID, Center_name, TR_range, TE_range, TI_range, slice_thickness_range, xspace_range, yspace_range, zspace_range,
-              xstep_range, ystep_range, zstep_range, series_description_regex
+              xstep_range, ystep_range, zstep_range, time_range, series_description_regex
               FROM mri_protocol
               WHERE
              (Center_name='$psc' AND ScannerID='$ScannerID' AND Objective='$objective')
@@ -458,7 +459,6 @@ sub identify_scan_db {
     
     # check against all possible scan types
     my $rowref;
-
     while($rowref = $sth->fetchrow_hashref()) {
         my $sd_regex = $rowref->{'series_description_regex'};
         if(0) {
@@ -475,6 +475,7 @@ sub identify_scan_db {
             print &in_range($xstep, $rowref->{'xstep_range'}) ? "xstep\t" : '';
             print &in_range($ystep, $rowref->{'ystep_range'}) ? "ystep\t" : '';
             print &in_range($zstep, $rowref->{'zstep_range'}) ? "zstep\t" : '';
+            print &in_range($time, $rowref->{'time_range'}) ? "time\t" : '';
             print "\n";
         }
         
@@ -490,13 +491,44 @@ sub identify_scan_db {
 	    
 	    && (!$rowref->{'xstep_range'} || &in_range($xstep, $rowref->{'xstep_range'}))
 	    && (!$rowref->{'ystep_range'} || &in_range($ystep, $rowref->{'ystep_range'}))
-	    && (!$rowref->{'zstep_range'} || &in_range($zstep, $rowref->{'zstep_range'})))) {
+	    && (!$rowref->{'zstep_range'} || &in_range($zstep, $rowref->{'zstep_range'}))
+	    && (!$rowref->{'time_range'} || &in_range($time, $rowref->{'time_range'})))) {
             return &scan_type_id_to_text($rowref->{'Scan_type'}, $dbhr);
-        }
+      }
     }
+
     # if we got here, we're really clueless...
+insert_violated_scans($dbhr,$series_description,$minc_location,$patient_name,$tr,$te,$ti,$slice_thickness,$xstep,$ystep,$zstep,$xspace,$yspace,$zspace,$time);
     return 'unknown';
 }    
+
+sub insert_violated_scans {
+
+   my ($dbhr,$series_description,$minc_location,$patient_name,$tr,$te,$ti,$slice_thickness,$xstep,$ystep,$zstep,$xspace,$yspace,$zspace,$time) = @_;
+  ####Insert the info into the database...
+   my $sth = $${dbhr}->prepare($query);
+   my $date = strftime "%Y-%m-%e", gmtime;
+   my  ($pscid,$candid,$visit) = split /_/,$patient_name;   #extract the pscid and candid
+   my $query;
+    $series_description = '"'. $series_description . '"';
+    my $query = "SELECT count(*) from mri_protocol_violated_scans where minc_location like '%$minc_location%'";
+    my $sth = $${dbhr}->prepare($query);
+    $sth->execute();
+    my @results = $sth->fetchrow_array();
+
+    ####if the patient name is already inserted updated####################
+    if (($results[0]) > 0) {
+   
+	 $query = "UPDATE mri_protocol_violated_scans set CandID ='$candid' ,PSCID = '$pscid' , Last_inserted = '$date', series_description = '$series_description', minc_location = '$minc_location' , PatientName = '$patient_name' , TR_range = '$tr' , TE_range = '$te', TI_range = '$ti', slice_thickness_range = '$slice_thickness' , xspace_range ='$xspace' ,yspace_range ='$yspace' , zspace_range ='$zspace',  xstep_range ='$xstep' ,ystep_range ='$ystep' , zstep_range ='$zstep', time='$time' where PatientName  like '%$patient_name%'";
+    
+    }else{
+
+         $query = "Insert INTO mri_protocol_violated_scans value ('','$candid','$pscid','$date',$series_description,'$minc_location','$patient_name','$tr','$te','$ti','$slice_thickness','$xspace','$yspace','$zspace','$xstep','$ystep','$zstep','$time')";
+
+     $sth = $${dbhr}->prepare($query);
+     my $success = $sth->execute();
+     }
+}
 
 # ------------------------------ MNI Header ----------------------------------
 #@NAME       : debug_inrange
