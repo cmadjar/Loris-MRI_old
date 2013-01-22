@@ -391,12 +391,19 @@ Returns: Textual name of scan type
 =cut
 
 sub identify_scan_db {
-    my ($psc, $objective, $fileref, $dbhr,$minc_location) = @_;
 
+
+    my  ($psc, $subjectref, $fileref, $dbhr,$minc_location) = @_;
+
+    my $candid = $${subjectref}->{'CandID'};
+    my $pscid = $${subjectref}->{'PSCID'};
+    my $visit = $${subjectref}->{'visitLabel'};
+    my $objective = $${subjectref}->{'subprojectID'};
     # get parameters from minc header
     my $tr = $${fileref}->getParameter('repetition_time');
     my $te = $${fileref}->getParameter('echo_time');
     my $ti = $${fileref}->getParameter('inversion_time');
+    my $patient_name =  $${fileref}->getParameter('patient_name');
     if (defined($tr)) {  $tr = &Math::Round::nearest(0.01, $tr*1000);  }
     if (defined($te)) {  $te = &Math::Round::nearest(0.01, $te*1000);  }
     if (defined($ti)) {  $ti = &Math::Round::nearest(0.01, $ti*1000);  }
@@ -404,7 +411,9 @@ sub identify_scan_db {
     my $xstep = $${fileref}->getParameter('xstep');
     my $ystep = $${fileref}->getParameter('ystep');
     my $zstep = $${fileref}->getParameter('zstep');
-    my $time = $${fileref}->getParameter('time');
+
+    my $time = $${fileref}->getParameter('time');    
+
     my $xspace = $${fileref}->getParameter('xspace');
     my $yspace = $${fileref}->getParameter('yspace');
     my $zspace = $${fileref}->getParameter('zspace');
@@ -415,6 +424,7 @@ sub identify_scan_db {
     if(0) {
         print "\ntr:\t$tr\nte:\t$te\nti:\t$ti\nst:\t$slice_thickness\n";
         print "xspace:\t$xspace\nyspace:\t$yspace\nzspace:\t$zspace\n";
+	print "time;\t$time\n";
         print "xstep:\t$xstep\nystep:\t$ystep\nzstep:\t$zstep\n";
     }
     
@@ -498,38 +508,22 @@ sub identify_scan_db {
     }
 
     # if we got here, we're really clueless...
-insert_violated_scans($dbhr,$series_description,$minc_location,$patient_name,$tr,$te,$ti,$slice_thickness,$xstep,$ystep,$zstep,$xspace,$yspace,$zspace,$time);
+    insert_violated_scans($dbhr,$series_description,$minc_location,$patient_name,$candid, $pscid,$visit,$tr,$te,$ti,$slice_thickness,$xstep,$ystep,$zstep,$xspace,$yspace,$zspace,$time);
+
     return 'unknown';
 }    
 
+
 sub insert_violated_scans {
 
-   my ($dbhr,$series_description,$minc_location,$patient_name,$tr,$te,$ti,$slice_thickness,$xstep,$ystep,$zstep,$xspace,$yspace,$zspace,$time) = @_;
-  ####Insert the info into the database...
-   my $sth = $${dbhr}->prepare($query);
-   my $date = strftime "%Y-%m-%e", gmtime;
-   my  ($pscid,$candid,$visit) = split /_/,$patient_name;   #extract the pscid and candid
+   my ($dbhr,$series_description,$minc_location,$patient_name,$candid, $pscid,$visit,$tr,$te,$ti,$slice_thickness,$xstep,$ystep,$zstep,$xspace,$yspace,$zspace,$time) = @_;
    my $query;
-    $series_description = '"'. $series_description . '"';
-    my $query = "SELECT count(*) from mri_protocol_violated_scans where minc_location like '%$minc_location%'";
-    my $sth = $${dbhr}->prepare($query);
-    $sth->execute();
-    my @results = $sth->fetchrow_array();
-
-    ####if the patient name is already inserted updated####################
-    if (($results[0]) > 0) {
-   
-	 $query = "UPDATE mri_protocol_violated_scans set CandID ='$candid' ,PSCID = '$pscid' , Last_inserted = '$date', series_description = '$series_description', minc_location = '$minc_location' , PatientName = '$patient_name' , TR_range = '$tr' , TE_range = '$te', TI_range = '$ti', slice_thickness_range = '$slice_thickness' , xspace_range ='$xspace' ,yspace_range ='$yspace' , zspace_range ='$zspace',  xstep_range ='$xstep' ,ystep_range ='$ystep' , zstep_range ='$zstep', time='$time' where PatientName  like '%$patient_name%'";
+   my $sth;
     
-    }else{
+   $sth = $${dbhr}->prepare("INSERT INTO mri_protocol_violated_scans (CandID,PSCID,time_run,series_description,minc_location,PatientName,TR_range,TE_range,TI_range,slice_thickness_range,xspace_range,yspace_range,zspace_range,xstep_range,ystep_range,zstep_range,time_range) VALUES (?,?,now(),?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+   my $success = $sth->execute($candid,$pscid,$series_description,$minc_location,$patient_name,$tr,$te,$ti,$slice_thickness,$xspace,$yspace,$zspace,$xstep,$ystep,$zstep,$time);
 
-         $query = "Insert INTO mri_protocol_violated_scans value ('','$candid','$pscid','$date',$series_description,'$minc_location','$patient_name','$tr','$te','$ti','$slice_thickness','$xspace','$yspace','$zspace','$xstep','$ystep','$zstep','$time')";
-
-     $sth = $${dbhr}->prepare($query);
-     my $success = $sth->execute();
-     }
 }
-
 # ------------------------------ MNI Header ----------------------------------
 #@NAME       : debug_inrange
 #@INPUT      : scalar value, scalar range string
@@ -707,7 +701,7 @@ sub register_db {
     # build the insert query
     my $query = "INSERT INTO files SET ";
 
-    foreach my $key ('File', 'SessionID', 'CoordinateSpace', 'ClassifyAlgorithm', 'OutputType', 'AcquisitionProtocolID', 'FileType', 'InsertedByUserID') {
+    foreach my $key ('File', 'SeriesUID', 'EchoTime','SessionID', 'CoordinateSpace', 'ClassifyAlgorithm', 'OutputType', 'AcquisitionProtocolID', 'FileType', 'InsertedByUserID') {
         # add the key=value pair to the query
         $query .= "$key=".$dbh->quote($${fileData{$key}}).", ";
     }
