@@ -19,9 +19,9 @@
 #$State: Exp $
 #---------------------------------------------------------------------------
 
-use MNI::Startup;
-use MNI::Spawn;
-use MNI::FileUtilities qw(check_output_dirs check_files);
+use MNI::Startup;   
+use MNI::Spawn;	
+use MNI::FileUtilities qw(check_output_dirs check_files);	
 use Getopt::Tabular qw(GetOptions);
 
 use strict;

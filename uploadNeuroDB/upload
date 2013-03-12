@@ -167,6 +167,7 @@ unless(&confirm_single_study(\@minc_files)) { print LOG "More than one study pas
 &refresh_mincs(\@minc_files);
 
 my $mcount = $#minc_files + 1;
+print "\nUPLOAD file\n";
 print "\nNumber of MINC files that will be considered for inserting into the database: $mcount\n";
 # If no good data was found stop processing and write error log.
 if ($mcount < 1) { 

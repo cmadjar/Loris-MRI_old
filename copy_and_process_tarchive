@@ -32,7 +32,7 @@ if
 then
 
 # process the tarchive
-uploadNeuroDB/tarchiveLoader -globLocation -profile prod $tempdir/`basename $tarchive`
+/data/preventAD/data/bin/mri/uploadNeuroDB/tarchiveLoader -globLocation -profile prod $tempdir/`basename $tarchive`
 
 # if the copy failed
 else
