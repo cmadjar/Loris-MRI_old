@@ -113,12 +113,8 @@ my  ($feedback_safe)    =   check_filesQC_filesComments($sessionID,$dbh,"feedbac
 if  ($feedback_safe)    { print "\n STOP: SeriesUID and EchoTime are not populated in feedback_mri_comments for all files in session $sessionID.\n"; exit 33;}
 
 # Run archiveUpdateDeleteMRI on the $ArchiveLocation
-my  $torun_file =   $tempdir."/tarchive_list.txt";
-# Create a file containing the list of Archive to use to run archiveUpdateDeleteMRI.
-unless  (open FILE, '>'.$torun_file)    { print "\n ERROR: Unable to create $torun_file\n"; exit 33;}
-print FILE "$ArchiveLocation\n";
-close FILE;
-my  $command    =   "perl archiveUpdateDeleteMRI -profile $profile -archive -update -delete -list $torun_file"; 
+my $toremove    =   createTempList($tempdir,$ArchiveLocation);
+my  $command    =   "perl archiveUpdateDeleteMRI -profile $profile -archive -update -delete -list $toremove"; 
 print $command."\n";  
 #system($command);
 
@@ -127,8 +123,24 @@ print $command."\n";
 #if  ($rows_deleted)     { print "Deleted $rows_deleted in tarchive table for session $sessionID, archive $ArchiveLocation\n"; }
 
 # Extract the tarchive in tempdir folder
-my  ($dcmdir)   =   extract_tarchive($ArchiveLocation,$tempdir);
-my  ($success)  =   modify_dcm_headers($dcmdir);    ##### to develop
+my  ($dcmdir)       =   extract_tarchive($ArchiveLocation,$tempdir);
+my  ($new_dcmdir)   =   update_dicom_headers($dcmdir,$tempdir,$oldPatientName,$newPatientName);
+
+# Reload tarchive.
+print "Rebuilding tarchive...\n";
+my  $DICOMTAR       =   $FindBin::Bin."/dicom-archive/dicomTar.pl";
+my  $tarchiveDir    =   $Settings::tarchiveLibraryDir;
+my  $cmd            =   "$DICOMTAR $tempdir/$new_dcmdir $tarchiveDir -database -profile $profile -clobber";
+print $cmd."\n";
+system($cmd);
+
+# Run batch_upload_tarchive.
+print "Running batch_uploads_tarchive... \n";
+my  ($newSessionID,$newArchiveLocation,$newDateAcquired)  =   getArchiveInfos($newPatientName,$data_dir,$dbh);
+my  $toreload   =   createTempList($tempdir,$newArchiveLocation);
+my  $UPLOAD_TAR =   $FindBin::Bin."/batch_uploads_tarchive";  
+my  $cmd        =   "$UPLOAD_TAR < $toreload";
+system($cmd);
 
 #############
 # Functions #
@@ -214,7 +226,9 @@ sub deleteTarchive  {
     
     return  ($rows_deleted); 
 }
-
+=pod
+Extract the tarchive in temp directory.
+=cut
 sub extract_tarchive {
      my ($tarchive, $tempdir)   =   @_;
 
@@ -238,5 +252,51 @@ sub extract_tarchive {
      `cd $tempdir ; tar -xzf $dcmtar`;
 
      return $dcmdir;
+}
+
+=pod
+=cut
+sub createTempList {
+    my  ($tempdir,$text)    =   @_;
+
+    my  $tmpList =   $tempdir."/tarchive_list.txt";
+    # Create a file containing the list of Archive to use to run archiveUpdateDeleteMRI.
+    unless  (open FILE, '>'.$tmpList)    { print "\n ERROR: Unable to create $tmpList\n"; exit 33;}
+    print FILE "$text\n";
+    close FILE;
+    
+    return  ($tmpList);
+}
+
+=pod
+Update dicom file header.
+=cut
+sub update_dicom_headers {
+    my  ($dcmdir,$tempdir,$oldPatientName,$newPatientName)   =   @_;    
+    my  $dir    =   $tempdir."/".$dcmdir; 
+    opendir (DIR, $dir) or die $!;
+    while (my $file = readdir(DIR)){
+        next if ($file =~ m/^\./);
+        next if ($file =~ m/.bak/);
+        my $f = $dir."/".$file;
+        print "Updating header of file $f ...\n";
+        my $command =   "dcmodify -ma PatientName=$newPatientName $f";
+        system($command);
+    }
+    closedir(DIR);
+    
+    print "Deleting .bak files.\n";
+    `rm $dir/*.bak`;
+
+    my $new_dcmdir;
+    if($dcmdir =~ m/($oldPatientName)_(\d+)_(\d+)/i){
+        $new_dcmdir =   $newPatientName."_".$2."_".$3;
+        print $new_dcmdir."\n";
+    } else { print "$dcmdir does not match oldPatientName_1111_111.\n"; exit 33; }
+    my $newdir  =   $tempdir."/".$new_dcmdir;
+    print "Renaming $tempdir/$dcmdir to $tempdir/$new_dcmdir.\n";
+    rename($dir,$newdir);
+
+    return ($new_dcmdir);
 }
 
