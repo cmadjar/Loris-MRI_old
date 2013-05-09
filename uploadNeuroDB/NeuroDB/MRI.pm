@@ -1065,7 +1065,7 @@ Returns: 1 if the pic was generated or 0 otherwise.
 =cut
 
 sub make_pics {
-    my ($fileref, $dest_dir, $horizontalPics) = @_;
+    my ($fileref, $data_dir, $dest_dir, $horizontalPics) = @_;
     my $file = $$fileref;
     my $dbhr = $file->getDatabaseHandleRef();
     
@@ -1074,7 +1074,7 @@ sub make_pics {
     my $rowhr = $sth->fetchrow_hashref();
     
     my $acquisitionProtocol = scan_type_id_to_text($file->getFileDatum('AcquisitionProtocolID'), $dbhr);
-    my $minc = $file->getFileDatum('File');
+    my $minc = $data_dir . '/' . $file->getFileDatum('File');
     my $mincbase = basename($minc);
     $mincbase =~ s/\.mnc(\.gz)?$//;
 
@@ -1104,7 +1104,7 @@ referenced by C<$file_ref>.
 Returns: 1 if the JIV data was generated or 0 otherwise.
 =cut
 sub make_jiv {
-    my ($fileref, $dest_dir) = @_;
+    my ($fileref, $data_dir, $dest_dir) = @_;
     my $file = $$fileref;
     my $dbhr = $file->getDatabaseHandleRef();
 
@@ -1112,7 +1112,7 @@ sub make_jiv {
     $sth->execute();
     
     my $rowhr = $sth->fetchrow_hashref();
-    my $minc = $file->getFileDatum('File');
+    my $minc = $data_dir . '/' . $file->getFileDatum('File');
     my $jiv = $dest_dir . '/' . $rowhr->{'CandID'};
 
     # generate jiv into temp dir
@@ -1139,7 +1139,7 @@ sub make_jiv {
     `mv $tempdir/* $jiv/`;
 
     # update mri table
-    $file->setParameter('jiv_path', $jiv);
+    $file->setParameter('jiv_path', $rowhr->{'CandID'});
     return 1;
 }
 
