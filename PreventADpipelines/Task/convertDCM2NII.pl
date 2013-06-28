@@ -22,7 +22,6 @@ USAGE
 my $outdir      = '/data/preventAD/data/Task/DATA';
 my $log_dir     = '/data/preventAD/data/Task/logs';
 my $converter   = 'dcm2nii';
-#my $TmpDir      = '/tmp';
 my $optionfile  = '/home/lorisdev/.dcm2nii/dcm2nii.ini';
 my ($list,@args);
 
@@ -30,7 +29,6 @@ my @args_table = (["-list",     "string", 1, \$list,        "list of directories
                   ["-o",        "string", 1, \$outdir,      "base output dir to put the converted files"                       ],
                   ["-log_dir",  "string", 1, \$log_dir,     "directory for log files"                                          ],
                   ["-converter","string", 1, \$converter,   "converter to be used"                                             ],
-#                  ["-TmpDir",   "string", 1, \$TmpDir,      "tmp directory where tarchive can be extracted"                    ],
                   ["-option",   "string", 1, \$optionfile,  "Option file be used with the converter"                           ]
                  );
 
@@ -54,7 +52,7 @@ my $template    = "TarConvert-$hour-$min-XXXXXX"; # for tempdir
 foreach my $tarchive (@tars) {
     chomp ($tarchive);
 
-    my $TmpDir      = tempdir($template, TMPDIR => 1, CLEANUP => 0 );
+    my $TmpDir  = tempdir($template, TMPDIR => 1, CLEANUP => 1 );
     my $dcm_dir = $TmpDir . "/" . extract_tarchive($tarchive, $TmpDir);       
 
     my ($site,$candID,$visit)   = getSiteSubjectVisitIDs($dcm_dir);    
