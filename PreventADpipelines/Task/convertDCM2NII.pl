@@ -26,11 +26,11 @@ my $optionfile  = '/home/lorisdev/.dcm2nii/dcm2nii.ini';
 my ($list,@args);
 
 my @args_table  = (["-list",     "string", 1, \$list,        "list of directories to look in for tarchives including full path" ],
-                  ["-o",        "string", 1, \$outdir,      "base output dir to put the converted files"                       ],
-                  ["-log_dir",  "string", 1, \$log_dir,     "directory for log files"                                          ],
-                  ["-converter","string", 1, \$converter,   "converter to be used"                                             ],
-                  ["-option",   "string", 1, \$optionfile,  "Option file be used with the converter"                           ]
-                 );
+                   ["-o",        "string", 1, \$outdir,      "base output dir to put the converted files"                       ],
+                   ["-log_dir",  "string", 1, \$log_dir,     "directory for log files"                                          ],
+                   ["-converter","string", 1, \$converter,   "converter to be used"                                             ],
+                   ["-option",   "string", 1, \$optionfile,  "Option file be used with the converter"                           ]
+                  );
 
 Getopt::Tabular::SetHelp ($Usage,'');
 GetOptions(\@args_table,\ @ARGV,\@args) || exit 1;
@@ -52,23 +52,32 @@ my $template    = "TarConvert-$hour-$min-XXXXXX"; # for tempdir
 foreach my $tarchive (@tars) {
     chomp ($tarchive);
 
+    ## Step 1: extract dicom tarchive in tmp directory
     my $TmpDir  = tempdir($template, TMPDIR => 1, CLEANUP => 1 );
     my $dcm_dir = $TmpDir . "/" . extract_tarchive($tarchive, $TmpDir);       
 
+    ## Step 2: get Site, Subject and Visit IDs from the extracted dicom folder
     my ($site,$candID,$visit)   = getSiteSubjectVisitIDs($dcm_dir);    
     next    if (!defined($site));
     print   LOG "Site is $site \t CandID is $candID \t Visit is $visit \n";
     
-    #subject and visit folders creation 
-    my ($candir, $visdir)   =   createOutFolders($outdir, $candID, $visit);
+    ## Step 3: create subject and visit output folders (which will contain the nifti files) 
+    my ($cand_out_dir, $visit_out_dir)  = createOutFolders($outdir, $candID, $visit);
 
-    my $command = $converter . " -b " . $optionfile . " -o " . $outdir . "/" . $candID . "/" . $visit . " " . $dcm_dir;
-    print   LOG "\t==> Converting data for site $site, candidate $candID, visit $visit.\n" unless (<$visdir/*.nii.gz>);
-    print   LOG "\t==> Data already converted.\n" if (<$visdir/*.nii.gz>);
-    system($command)    unless (<$visdir/*.nii.gz>);
-    
-    # keep only Encoding, Retrieval, oriented MPRAGE, fieldmaps images.
-    my @remove_list = glob "$visdir/AAHScout* $visdir/AXIAL* $visdir/co* $visdir/MPRAGE* $visdir/RSN* $visdir/*pCASL* $visdir/T2SAG* $visdir/*TI900*";
+    ## Step 4: dcm2nii conversion 
+    my $command = $converter                        . 
+                    " -b " . $optionfile            . 
+                    " -o " . $visit_out_dir . " "   . 
+                    $dcm_dir;
+    if (-e "$visit_out_dir/*nii.gz") {
+        print   LOG "\t==> Data already converted.\n";
+    } else {
+        print   LOG "\t==> Converting data for site $site, candidate $candID, visit $visit.\n";
+        system($command);
+    }
+
+    # Step 5: keep only Encoding, Retrieval, oriented MPRAGE and fieldmap images.
+    my @remove_list = glob "$visit_out_dir/AAHScout* $visit_out_dir/AXIAL* $visit_out_dir/co* $visit_out_dir/MPRAGE* $visit_out_dir/RSN* $visit_out_dir/*pCASL* $visit_out_dir/T2SAG* $visit_out_dir/*TI900*";
     remove_tree(@remove_list, {result => \my $res_list});
     if (@$res_list == 0){
         print   LOG "\t==> No files were deleted.\n";
@@ -76,33 +85,9 @@ foreach my $tarchive (@tars) {
         print   LOG "\t==> Removed the following nifti files @$res_list.\n";
     }
 
-    # Rename the files according to LORIS convention
-    opendir(OUTDIR,$visdir);
-    my $newfile;
-    while(my $filename = readdir(OUTDIR)){
-        next    if (($filename eq '.') || ($filename eq '..') || ($filename=~/PreventAD_/i));
-        my $newname;
-        if ($filename =~ /(EN3ep2d64s)(\d\d\d[a-z]\d+)/i) { 
-            $newname    = "PreventAD_" . $candID . "_" . $visit . "_Encoding_" . $2 . ".nii.gz"; 
-            print $newname."\n"; 
-        } elsif ($filename =~ /(RETep2d64s)(\d\d\d[a-z]\d+)/i) { 
-            $newname    = "PreventAD_" . $candID . "_" . $visit . "_Retrieval_" . $2 . ".nii.gz"; 
-            print $newname."\n"; 
-        } elsif ($filename =~ /(oMPRAGEADNIiPAT2s)(\d\d\d[a-z]\d+)/i) { 
-            $newname    = "PreventAD_" . $candID . "_" . $visit . "_adniT1_" . $2 . ".nii.gz"; 
-            print $newname."\n"; 
-        } elsif ($filename =~ /(grefieldmappings)(\d\d\d[a-z]\d+)/i) { 
-            $newname    = "PreventAD_" . $candID . "_" . $visit . "_Fieldmap_" . $2 . ".nii.gz"; 
-            print $newname."\n"; 
-        }        
-        my $file    = $visdir . "/" . $filename;
-        $newfile    = $visdir . "/" . $newname;
-        print   LOG "\t==> Renaming $file to $newfile\n";
-        move($file,$newfile)    or die(qq{failed to move $file -> $newfile});
-    }
-    close(OUTDIR);
-
-    `rm -r $dcm_dir`;
+    # Step 6: rename the files according to LORIS convention
+    renameFiles($visit_out_dir, $candID, $visit);
+    `rm -r $TmpDir`;
 }
 
 
@@ -145,8 +130,45 @@ Function that creates the candidate and visit output folders.
 sub createOutFolders {
     my ($outdir, $candID, $visit)   = @_;
        
-    my $candir  = $outdir."/".$candID;
-    `mkdir $candir`     unless (-d "$candir");
-    my $visdir  = $candir."/".$visit;
-    `mkdir $visdir`     unless (-d "$visdir");
+    my $cand_out_dir    = $outdir."/".$candID;
+    `mkdir $cand_out_dir`     unless (-d "$cand_out_dir");
+    my $visit_out_dir   = $cand_out_dir."/".$visit;
+    `mkdir $visit_out_dir`     unless (-d "$visit_out_dir");
+
+    return ($cand_out_dir, $visit_out_dir);
+}
+
+=pod
+Function to rename nifti files according to LORIS convention.
+=cut
+sub renameFiles {
+    my ($visit_out_dir, $candID, $visit)    = @_;
+
+    opendir(OUTDIR,$visit_out_dir);
+    my @entries = readdir(OUTDIR);
+    close(OUTDIR);
+
+    foreach my $filename (@entries) {
+        next    if (($filename eq '.') || ($filename eq '..') || ($filename=~/PreventAD_/i));
+
+        my ($file, $newname, $newfile);
+        
+        if ($filename =~ /(EN3ep2d64s)(\d\d\d[a-z]\d+)/i) { 
+            $newname    = "PreventAD_" . $candID . "_" . $visit . "_Encoding_"  . $2 . ".nii.gz"; 
+        } elsif ($filename =~ /(RETep2d64s)(\d\d\d[a-z]\d+)/i) { 
+            $newname    = "PreventAD_" . $candID . "_" . $visit . "_Retrieval_" . $2 . ".nii.gz"; 
+        } elsif ($filename =~ /(oMPRAGEADNIiPAT2s)(\d\d\d[a-z]\d+)/i) { 
+            $newname    = "PreventAD_" . $candID . "_" . $visit . "_adniT1_"    . $2 . ".nii.gz"; 
+        } elsif ($filename =~ /(grefieldmappings)(\d\d\d[a-z]\d+)/i) { 
+            $newname    = "PreventAD_" . $candID . "_" . $visit . "_Fieldmap_"  . $2 . ".nii.gz"; 
+        }        
+        
+        print $newname . "\n"; 
+        
+        $file       = $visit_out_dir . "/" . $filename;
+        $newfile    = $visit_out_dir . "/" . $newname;
+        
+        print   LOG "\t==> Renaming $file to $newfile\n";
+        move($file,$newfile)    or die(qq{failed to move $file -> $newfile});
+    }
 }
