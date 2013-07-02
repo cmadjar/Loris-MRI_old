@@ -19,13 +19,13 @@ Usage $0 [options]
 -help for options
 
 USAGE
-my $outdir      = '/data/preventAD/data/Task/DATA';
-my $log_dir     = '/data/preventAD/data/Task/logs';
+my $outdir      = '/data/preventAD/data/pipelines/Task/DATA';
+my $log_dir     = '/data/preventAD/data/pipelines/Task/logs';
 my $converter   = 'dcm2nii';
 my $optionfile  = '/home/lorisdev/.dcm2nii/dcm2nii.ini';
 my ($list,@args);
 
-my @args_table = (["-list",     "string", 1, \$list,        "list of directories to look in for tarchives including full path" ],
+my @args_table  = (["-list",     "string", 1, \$list,        "list of directories to look in for tarchives including full path" ],
                   ["-o",        "string", 1, \$outdir,      "base output dir to put the converted files"                       ],
                   ["-log_dir",  "string", 1, \$log_dir,     "directory for log files"                                          ],
                   ["-converter","string", 1, \$converter,   "converter to be used"                                             ],
@@ -60,10 +60,7 @@ foreach my $tarchive (@tars) {
     print   LOG "Site is $site \t CandID is $candID \t Visit is $visit \n";
     
     #subject and visit folders creation 
-    my $candir  = $outdir."/".$candID;
-    `mkdir $candir`     unless (-d "$candir");
-    my $visdir  = $candir."/".$visit;
-    `mkdir $visdir`     unless (-d "$visdir");
+    my ($candir, $visdir)   =   createOutFolders($outdir, $candID, $visit);
 
     my $command = $converter . " -b " . $optionfile . " -o " . $outdir . "/" . $candID . "/" . $visit . " " . $dcm_dir;
     print   LOG "\t==> Converting data for site $site, candidate $candID, visit $visit.\n" unless (<$visdir/*.nii.gz>);
@@ -104,6 +101,8 @@ foreach my $tarchive (@tars) {
         move($file,$newfile)    or die(qq{failed to move $file -> $newfile});
     }
     close(OUTDIR);
+
+    `rm -r $dcm_dir`;
 }
 
 
@@ -140,3 +139,14 @@ sub extract_tarchive {
     return ($dcmdir);
 }
 
+=pod
+Function that creates the candidate and visit output folders.
+=cut
+sub createOutFolders {
+    my ($outdir, $candID, $visit)   = @_;
+       
+    my $candir  = $outdir."/".$candID;
+    `mkdir $candir`     unless (-d "$candir");
+    my $visdir  = $candir."/".$visit;
+    `mkdir $visdir`     unless (-d "$visdir");
+}
