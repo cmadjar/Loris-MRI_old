@@ -383,12 +383,6 @@ foreach my $minc (@minc_files)  {
         print "new NAME: ".$minc_protocol_identified ."\n" if $debug;
         $file->setFileData('File', $file_path);
 
-        # if tarchive is in a year folder within the tarchive library directory, set $valid_study to 1 and $newTarchiveLocation to $tarchive as the tarchive has already been moved into a year subfolder of the tarchiveLibraryDir (see if statement below).
-        if ($tarchive =~ m/$Settings::tarchiveLibraryDir\/\d\d\d\d\//i) {
-            $valid_study            =   1;
-            $newTarchiveLocation    =   $tarchive;
-        }
-
     # If tarchive library dir is not defined,
     # Or if tarchive library is defined and the tarchive is in a year subfolder of the tarchive library dir
     #   -> the new tarchive location is $tarchive.   
