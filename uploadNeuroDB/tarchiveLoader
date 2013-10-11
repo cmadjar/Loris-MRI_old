@@ -103,8 +103,7 @@ if(!$ARGV[0] || !$profile) { print $Help; print "$Usage\n\tERROR: You must speci
 
 my $tarchive = abs_path($ARGV[0]);
 unless (-e $tarchive) {
-    my $message =  "\nERROR: Could not find archive $tarchive. \nPlease, make sure the path to the archive is correct. Upload will exit now.\n\n\n";
-    print $message;
+    print "\nERROR: Could not find archive $tarchive. \nPlease, make sure the path to the archive is correct. Upload will exit now.\n\n\n";
     exit 33;
 }           
 
