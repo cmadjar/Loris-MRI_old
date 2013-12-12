@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+
+<ASLparametersNb_v0.1>
+
+    <NeuroServVersion>
+        <buildTime>Dec 21 2012 15:59:12</buildTime>
+        <bundlePath>/Application/NeuroServ.app</bundlePath>
+        <bundleVersion>2.051</bundleVersion>
+        <gccVersion>4.2.1 Compatible Apple Clang 4.1 ((tags/Apple/clang-421.11.66))</gccVersion>
+    </NeuroServVersion>
+
+    <plugin>
+        <name>Motion Correction</name>
+        <parameter>
+            <name>-targetFrame</name>
+            <value>2</value>
+        </parameter>
+        <parameter>
+            <name>+alignedSeries</name>
+            <value>1</value>
+        </parameter>
+        <parameter>
+            <name>+nudgedVolumes</name>
+            <value>0</value>
+        </parameter>
+    </plugin>
+
+    <plugin>
+        <name>ASL Subtraction</name>
+        <parameter>
+            <name>-interpolationType</name>
+            <value>Linear</value>
+        </parameter>
+        <parameter>
+            <name>-intensityThreshold</name>
+            <value>0</value>
+        </parameter>
+        <parameter>
+            <name>-numberOfFramesToSkip</name>
+            <value>0</value>
+        </parameter>
+        <parameter>
+            <name>-subtractionOrder</name>
+            <value>Even minus Odd</value>
+        </parameter>
+        <parameter>
+            <name>+evenSeries</name>
+            <value>1</value>
+        </parameter>
+        <parameter>
+            <name>+subtractionSeries</name>
+            <value>1</value>
+        </parameter>
+        <parameter>
+            <name>+additionSeries</name>
+            <value>0</value>
+        </parameter>
+        <parameter>
+            <name>+skippedFrames</name>
+            <value>0</value>
+        </parameter>
+        <parameter>
+            <name>+oddSeries</name>
+            <value>0</value>
+        </parameter>
+    </plugin>
+
+    <plugin>
+        <name>Spatial Filtering</name>
+        <parameter>
+            <name>-kernelType</name>
+            <value>Gaussian</value>
+        </parameter>
+        <parameter>
+            <name>-fwhm</name>
+            <value>6</value>
+        </parameter>
+        <parameter>
+            <name>-forceFloat</name>
+            <value>1</value>
+        </parameter>
+        <parameter>
+            <name>+filteredVolume</name>
+            <value>1</value>
+        </parameter>
+        <parameter>
+            <name>+gradientVector</name>
+            <value>0</value>
+        </parameter>
+    </plugin>
+
+    <plugin>
+        <name>GLM Time Series</name>
+        <parameter>
+            <name>-applyHRF</name>
+            <value>0</value>
+        </parameter>
+        <parameter>
+            <name>-useMotionParameters</name>
+            <value>0</value>
+        </parameter>
+        <parameter>
+            <name>-contrastList</name>
+            <value>Baseline, 1</value>
+        </parameter>
+        <parameter>
+            <name>-sliceTimeCorrection</name>
+            <value>0</value>
+        </parameter>
+        <parameter>
+            <name>+effectSize</name>
+            <value>1</value>
+        </parameter>
+        <parameter>
+            <name>+effectStandardError</name>
+            <value>0</value>
+        </parameter>
+        <parameter>
+            <name>+pValues</name>
+            <value>0</value>
+        </parameter>
+        <parameter>
+            <name>+percentEffect</name>
+            <value>0</value>
+        </parameter>
+        <parameter>
+            <name>+residualSeries</name>
+            <value>0</value>
+        </parameter>
+        <parameter>
+            <name>+logPValues</name>
+            <value>0</value>
+        </parameter>
+        <parameter>
+            <name>+tmap</name>
+            <value>0</value>
+        </parameter>
+        <parameter>
+            <name>+residualStandardDeviation</name>
+            <value>0</value>
+        </parameter>
+        <parameter>
+            <name>+betas</name>
+            <value>0</value>
+        </parameter>
+        <parameter>
+            <name>+snr</name>
+            <value>0</value>
+        </parameter>
+    </plugin>
+
+    <plugin>
+        <name>ASL Quantification</name>
+        <parameter>
+            <name>-aslType</name>
+            <value>Continuous</value>
+        </parameter>
+        <parameter>
+            <name>-t1Blood</name>
+            <value>1.49</value>
+        </parameter>
+        <parameter>
+            <name>-postLabelDelay</name>
+            <value>0.9</value>
+        </parameter>
+        <parameter>
+            <name>-paslTI2</name>
+            <value>1.4</value>
+        </parameter>
+        <parameter>
+            <name>-greyMatterT1Correction</name>
+            <value>0</value>
+        </parameter>
+        <parameter>
+            <name>-alphaCASL</name>
+            <value>0.8</value>
+        </parameter>
+        <parameter>
+            <name>-paslTI1</name>
+            <value>0.7</value>
+        </parameter>
+        <parameter>
+            <name>-t1GreyMatter</name>
+            <value>1.4</value>
+        </parameter>
+        <parameter>
+            <name>-alphaPASL</name>
+            <value>0.95</value>
+        </parameter>
+        <parameter>
+            <name>-TR</name>
+            <value>4</value>
+        </parameter>
+        <parameter>
+            <name>-labelDuration</name>
+            <value>1.5</value>
+        </parameter>
+        <parameter>
+            <name>-lambda</name>
+            <value>0.9</value>
+        </parameter>
+        <parameter>
+            <name>+absoluteFlow</name>
+            <value>1</value>
+        </parameter>
+    </plugin>
+
+</ASLparametersNb_v0.1>
