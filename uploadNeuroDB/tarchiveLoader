@@ -401,10 +401,11 @@ foreach my $minc (@minc_files)  {
             my $newTarchiveFilename = basename($tarchive);
             $newTarchiveLocation .= "/".$newTarchiveFilename;
 
-         # move the tarchive
+        # move the tarchive
             my $mvTarchiveCmd = "mv $tarchive $newTarchiveLocation";
             `$mvTarchiveCmd`;
-            # now update tarchive table to store correct location
+
+        # now update tarchive table to store correct location
             $dbh->do("UPDATE tarchive SET ArchiveLocation=".$dbh->quote($newTarchiveLocation)." WHERE DicomArchiveID=".$dbh->quote($tarchiveInfo{'DicomArchiveID'}));
         }
 
