@@ -440,7 +440,7 @@ sub insert_intermedFiles {
 
     my (@inputIDs)  = split(';', $inputFileIDs); 
     foreach my $inID (@inputIDs) {
-        my $query   = "INSERT INTO intermediary_files " .
+        my $query   = "INSERT INTO files_intermediary " .
                       "(Output_FileID, Input_FileID, Tool) " .
                       "Values (?, ?, ?)";
         my $sth     = $dbh->prepare($query);
