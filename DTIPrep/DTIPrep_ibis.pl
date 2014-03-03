@@ -73,6 +73,7 @@ print LOG "Log file, $date\n\n";
 # Fetch DTIPrep step during which a secondary QCed file will be created (for example: noMC for a file without motion correction). 
 # This is set as a config option in the config file.
 my  $QCed2_step =  $Settings::QCed2_step;
+my  $reg_script =  $Settings::DTIPrepReg_path;
 
 # Establish database connection
 my  $dbh    =   &DB::DBI::connect_to_db(@Settings::db);
@@ -98,26 +99,17 @@ foreach my $dir (@dirs)   {
     ####### Step 2: #######  Grep protocol based on the visit in the directory
     #######################
     my $protocol;
-    if ($dir =~  /^[a-z]_\d\d\d\d\d\d_V(\d\d)_/i)  {       
+    if ($dir =~  /^\d\d\d\d\d\d_V(\d\d)_/i)  {       
         my  $visit_nb   = $1;
-        ($protocol)     = $Settings::getDTIPrepProtocol($visit_nb);
+        ($protocol)     = &Settings::getDTIPrepProtocol($visit_nb);
     }
     next if (!$protocol);
 
     #######################
-    ####### Step 3: #######  Get native DTI file based on QCReports
+    ####### Step 3: ####### Run DTIPrepRegister.pl 
     #######################
-    ## Need to think in case there are multiple DTI acquisition
-    
-    #######################
-    ####### Step 4: #######  Run DTIPrepRegister
-    #######################
-    ## Need to run it for each DTI acquisition
-    
-
-
-# $register_cmd    = "perl DTIPrepRegister.pl -profile $profile -DTIPrep_subdir $dir -DTIPrepProtocol \"$protocol\" -DTI_file $dti_file -DTIPrepVersion \"$DTIPrepVersion\"";
-
+    &runDTIPrepRegister($profile, $dir, $protocol, $QCReport, $DTIPrepVersion, $dbh);
+    ## Need to run it for each DTI acquisition (a.k.a. each $QCReport found in $dir)
 
 exit 0;
 
@@ -126,16 +118,83 @@ exit 0;
 ## Functions ##
 ###############
 
-# Fetch protocol based on directory name.
+=pod
+Fetch protocol based on directory name.
+Input:  $dir: directory containing DTIPrep outputs
+Output: $visit: visit label used in the directory containing DTIPrep outputs
+=cut
 sub  get_DTI_Site_CandID_Visit {
     my ($dir) =   @_;
 
-    if  ($dir =~  /^[a-z]_\d\d\d\d\d\d_V(\d\d)_/i)  { 
+    if  ($dir =~  /\d\d\d\d\d\d_V(\d\d)/i)  { 
         my  $visit  =   $1;
-        return  ($site, $subjID, $visit);
+        return  ($visit);
     }else{
         return  undef;
     }
 
 }
 
+
+=pod
+Fetch native DTI based on QCReport's name.
+Inputs: $report: QCReport to use to fetch native DTI
+        $dbh: database handler
+Output: $nativeDTI: native DTI found in the database corresponding to $report
+=cut
+sub getNativeDTI{
+    my ($report, $dbh) = @_;
+
+    my $query   = "SELECT File " .
+                  "FROM files "  . 
+                  "WHERE File like ?";
+    my $sth     = $dbh->prepare($query);
+
+    my ($nativeDTI, $where);
+    if ($report =~ /([a-z]+_\d\d\d\d\d\d_V\d\d_[a-z]+_\d\d\d)_QCReport/i) {
+        $where  = '%$1%';
+    } else {
+        print LOG "$report does not match regex expresion to use to grep native DWI file.\n";
+        return undef;
+    }
+    $sth->execute($where);
+    if ($sth->rows > 0) {
+        my $row = $sth->fetchrow_hashref();
+        $nativeDTI  = $row->{'File'};
+    }
+
+    return ($nativeDTI);
+}
+
+
+
+=pod
+Run DTIPrepRegister.pl on directory $dir.
+Inputs: - $profile: prod file in ~/.neurodb
+        - $dir: base directory containing DTIPrep outputs to be registered
+        - $protocol: protocol used to create DTIPrep outputs to be registered
+        - $DTIPrepVersion: DTIPrep version used to create DTIPrep outputs
+        - $QCReport_array: list of QCReports found in $dir (one per native DTI file)
+        - $dbh: database handler
+=cut
+sub runDTIPrepRegister {
+    my ($profile, $dir, $protocol, $DTIPrepVersion, $QCReport_array, $dbh);
+
+    my $command = "perl DTIPrepRegister.pl " .
+                    "-profile $profile " .
+                    "-DTIPrep_subdir $dir " .
+                    "-DTIPrepProtocol $protocol " .
+                    "-DTIPrepVersion $DTIPrepVersion ";
+
+    foreach my $report ($QCReport_array) {
+        my ($native) = &getNativeDTI($report, $dbh);
+        if ($native) {
+            $command = $command . "-DTI_file $native";
+            print LOG "Running $command\n";
+            system($command);
+        } else {
+            print LOG "Could not find native DTI corresponding to $QCReport.\n";
+            next; 
+        }
+    }  
+}
