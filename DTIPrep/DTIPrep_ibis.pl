@@ -32,9 +32,9 @@ USAGE
 
 # Define the table describing the command-line options
 my  @args_table = (
-    ["-profile",        "string", 1,  \$profile,          "name of the config file in ~/.neurodb."],
-    ["-dir_list",       "string", 1,  \$DTIPrep_subdir,   "DTIPrep subdirectory storing the DTIPrep processed files to be registered"],
-    ["-DTIPrepVersion", "string", 1,  \$DTIPrepVersion,   "DTIPrep version used for processing."],
+    ["-profile",        "string", 1,  \$profile,        "name of the config file in ~/.neurodb."],
+    ["-dir_list",       "string", 1,  \$dir_list,       "DTIPrep subdirectory storing the DTIPrep processed files to be registered"],
+    ["-DTIPrepVersion", "string", 1,  \$DTIPrepVersion, "DTIPrep version used for processing."],
 );
 
 Getopt::Tabular::SetHelp ($Usage, '');
@@ -81,7 +81,7 @@ print LOG "\n==> Successfully connected to database \n";
 
 
 # Parse through list of directories containing native DTI data (i.e. $data_dir/assembly/DCCID/Visit/mri/native)
-open(DIRS,"<$list");
+open(DIRS,"<$dir_list");
 my  @dirs   =   <DIRS>;
 close(DIRS);
 
@@ -92,14 +92,14 @@ foreach my $dir (@dirs)   {
     #######################
     ####### Step 1: #######  Grep QCReport in directory
     #######################
-    my ($QCReport)  = &DTI::getFilesList($dir, "_QCReprot.txt");
+    my ($QCReport)  = &DTI::getFilesList($dir, "_QCReport.txt");
     next if (!$QCReport);
 
     #######################
     ####### Step 2: #######  Grep protocol based on the visit in the directory
     #######################
     my $protocol;
-    if ($dir =~  /^\d\d\d\d\d\d_V(\d\d)_/i)  {       
+    if ($dir =~  /\d\d\d\d\d\d_V(\d\d)$/i)  {       
         my  $visit_nb   = $1;
         ($protocol)     = &Settings::getDTIPrepProtocol($visit_nb);
     }
@@ -111,6 +111,9 @@ foreach my $dir (@dirs)   {
     &runDTIPrepRegister($profile, $dir, $protocol, $QCReport, $DTIPrepVersion, $dbh);
     ## Need to run it for each DTI acquisition (a.k.a. each $QCReport found in $dir)
 
+}
+
+# Program is finished
 exit 0;
 
 
@@ -129,7 +132,7 @@ sub  get_DTI_Site_CandID_Visit {
     if  ($dir =~  /\d\d\d\d\d\d_V(\d\d)/i)  { 
         my  $visit  =   $1;
         return  ($visit);
-    }else{
+    } else {
         return  undef;
     }
 
@@ -142,7 +145,7 @@ Inputs: $report: QCReport to use to fetch native DTI
         $dbh: database handler
 Output: $nativeDTI: native DTI found in the database corresponding to $report
 =cut
-sub getNativeDTI{
+sub getNativeDTI {
     my ($report, $dbh) = @_;
 
     my $query   = "SELECT File " .
@@ -151,8 +154,8 @@ sub getNativeDTI{
     my $sth     = $dbh->prepare($query);
 
     my ($nativeDTI, $where);
-    if ($report =~ /([a-z]+_\d\d\d\d\d\d_V\d\d_[a-z]+_\d\d\d)_QCReport/i) {
-        $where  = '%$1%';
+    if ($report =~ /([a-zA-Z]+_\d\d\d\d\d\d_V\d\d_[a-zA-Z]+_\d\d\d)_QCReport/i) {
+        $where  = '%' . $1 . '%';
     } else {
         print LOG "$report does not match regex expresion to use to grep native DWI file.\n";
         return undef;
@@ -178,22 +181,22 @@ Inputs: - $profile: prod file in ~/.neurodb
         - $dbh: database handler
 =cut
 sub runDTIPrepRegister {
-    my ($profile, $dir, $protocol, $DTIPrepVersion, $QCReport_array, $dbh);
+    my ($profile, $dir, $protocol, $QCReport_array, $DTIPrepVersion, $dbh) = @_;
 
-    my $command = "perl DTIPrepRegister.pl " .
-                    "-profile $profile " .
-                    "-DTIPrep_subdir $dir " .
-                    "-DTIPrepProtocol $protocol " .
-                    "-DTIPrepVersion $DTIPrepVersion ";
+    my $command = "perl DTIPrepRegister.pl"         .
+                    " -profile "        . $profile  . 
+                    " -DTIPrep_subdir " . $dir      .
+                    " -DTIPrepProtocol ". $protocol .
+                    " -DTIPrepVersion " . $DTIPrepVersion ;
 
-    foreach my $report ($QCReport_array) {
+    foreach my $report (@$QCReport_array) {
         my ($native) = &getNativeDTI($report, $dbh);
         if ($native) {
             $command = $command . "-DTI_file $native";
             print LOG "Running $command\n";
             system($command);
         } else {
-            print LOG "Could not find native DTI corresponding to $QCReport.\n";
+            print LOG "Could not find native DTI corresponding to $report.\n";
             next; 
         }
     }  
