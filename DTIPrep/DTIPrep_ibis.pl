@@ -62,7 +62,7 @@ if (!$DTIPrepVersion) {
 # Needed for log file
 my  $data_dir    =  $Settings::data_dir;
 my  $log_dir     =  "$data_dir/logs/DTIPrep_Preparation";
-system("mkdir -p -m 755 $logdir") unless (-e $logdir);
+system("mkdir -p -m 755 $log_dir") unless (-e $log_dir);
 my  ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst)=localtime(time);
 my  $date        =  sprintf("%4d-%02d-%02d_%02d:%02d:%02d",$year+1900,$mon+1,$mday,$hour,$min,$sec);
 my  $log         =  "$log_dir/DTIPrep_preparation_$date.log";
@@ -155,6 +155,7 @@ sub getNativeDTI {
     if ($sth->rows > 0) {
         my $row = $sth->fetchrow_hashref();
         $nativeDTI  = $data_dir . "/" . $row->{'File'};
+        $nativeDTI  =~ s/\/\//\//i;
     }
 
     return ($nativeDTI);
@@ -202,6 +203,7 @@ sub runDTIPrepPipeline {
     if (@native_files) {
         print LOG "Running $command\n";
         system($command);
+        `rm $native_list`;
     }
 }
 
@@ -229,16 +231,23 @@ sub moveProcessed {
     my $count   = `ls $dir | wc -l`;
 
     # Move processed files into pipeline tree
-    my $cmd = "cp $dir/* $QCoutdir";
-    system($cmd);
+    opendir (DIR, "$dir") ||  die "cannot open $dir\n";
+    my @entries = readdir(DIR);
+    closedir (DIR);
+    my $copied;
+    foreach my $file (@entries) {
+        next if (($file eq ".") || ($file eq ".."));
+        my $cmd = "cp $dir/$file $QCoutdir";
+        system($cmd) unless (-e "$QCoutdir/$file");
+        $copied = $copied + 1 if (-e "$QCoutdir/$file");
+    }
     # Copy DTIPrep protocol into $QCoutdir
-    my $cmd2= "cp $protocol $QCoutdir\n";
-    system($cmd2);
-    $count  = $count + 1; # add protocol file to number of processed files
+    my $copied_prot = $QCoutdir . "/" . basename($protocol);
+    my $cmd2= "cp $protocol $copied_prot\n";
+    system($cmd2) unless (-e $copied_prot);
     
     # Check if all files have been moved to $QCoutdir
-    my $new_count   = `ls $QCoutdir | wc -l`;
-    if ($new_count == $count) {
+    if ($copied == $count) {
         print LOG "All files stored in $dir were successfully moved to $QCoutdir";
         return ($QCoutdir);
     } else {
