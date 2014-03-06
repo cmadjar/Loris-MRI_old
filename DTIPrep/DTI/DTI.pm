@@ -408,6 +408,10 @@ sub determineDTIPrepPostprocOutputs {
     # Determine nrrd and minc names
     $DTIrefs->{$dti_file}->{'Postproc'}->{'IDWI'}->{'nrrd'}  = $QCoutdir . "/" . $dti_name  . $IDWI_suffix . ".nrrd";
     $DTIrefs->{$dti_file}->{'Postproc'}->{'IDWI'}->{'minc'}  = $QCoutdir . "/" . $dti_name  . $IDWI_suffix . ".mnc" ;
+    # Determine nrrd and minc names for isotropic bet mask
+    $DTIrefs->{$dti_file}->{'Postproc'}->{'IDWI_bet'}->{'nrrd'}  = $QCoutdir . "/" . $dti_name  . $IDWI_suffix . "_bet_mask.nrrd";
+    $DTIrefs->{$dti_file}->{'Postproc'}->{'IDWI_bet'}->{'minc'}  = $QCoutdir . "/" . $dti_name  . $IDWI_suffix . "_bet_mask.mnc" ;
+
 
     # Determine input files that were used to obtain the processed file
     my $QCed_minc   = $DTIrefs->{$dti_file}->{'Preproc'}->{'QCed'}->{'minc'};
@@ -1007,6 +1011,8 @@ sub convert_DTIPrep_postproc_outputs {
     my $md_minc         = $DTIrefs->{$dti_file}->{'Postproc'}->{'MD'}->{'minc'};
     my $idwi_nrrd       = $DTIrefs->{$dti_file}->{'Postproc'}->{'IDWI'}->{'nrrd'};
     my $idwi_minc       = $DTIrefs->{$dti_file}->{'Postproc'}->{'IDWI'}->{'minc'};
+    my $idwi_nrrd       = $DTIrefs->{$dti_file}->{'Postproc'}->{'IDWI_bet'}->{'nrrd'};
+    my $idwi_minc       = $DTIrefs->{$dti_file}->{'Postproc'}->{'IDWI_bet'}->{'minc'};
 
     # 2. Check that all processed outputs were created
     my $nrrds_found;
