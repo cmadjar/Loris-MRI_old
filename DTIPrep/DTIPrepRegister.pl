@@ -90,6 +90,7 @@ if (!$DTIPrepVersion) {
 # Needed for log file
 my  $data_dir    =  $Settings::data_dir;
 my  $log_dir     =  "$data_dir/logs/DTIPrep_register";
+system("mkdir -p -m 755 $logdir") unless (-e $logdir);
 my  ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst)=localtime(time);
 my  $date        =  sprintf("%4d-%02d-%02d_%02d:%02d:%02d",$year+1900,$mon+1,$mday,$hour,$min,$sec);
 my  $log         =  "$log_dir/DTIregister$date.log";

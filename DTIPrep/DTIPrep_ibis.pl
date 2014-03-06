@@ -62,6 +62,7 @@ if (!$DTIPrepVersion) {
 # Needed for log file
 my  $data_dir    =  $Settings::data_dir;
 my  $log_dir     =  "$data_dir/logs/DTIPrep_Preparation";
+system("mkdir -p -m 755 $logdir") unless (-e $logdir);
 my  ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst)=localtime(time);
 my  $date        =  sprintf("%4d-%02d-%02d_%02d:%02d:%02d",$year+1900,$mon+1,$mday,$hour,$min,$sec);
 my  $log         =  "$log_dir/DTIPrep_preparation_$date.log";
@@ -116,7 +117,7 @@ foreach my $dir (@dirs)   {
     #######################
     ####### Step 4: ####### Run DTIPrepRegister.pl 
     #######################
-    &runDTIPrepPipeline($data_dir, $profile, $dir, $protocol, $QCReport, $DTIPrepVersion, $dbh);
+&runDTIPrepPipeline($data_dir, $profile, $protocol, $QCReport, $DTIPrepVersion, $dbh);
     ## Need to run it for each DTI acquisition (a.k.a. each $QCReport found in $dir)
 
 }
@@ -128,24 +129,6 @@ exit 0;
 ###############
 ## Functions ##
 ###############
-
-=pod
-Fetch protocol based on directory name.
-Input:  $dir: directory containing DTIPrep outputs
-Output: $visit: visit label used in the directory containing DTIPrep outputs
-=cut
-sub  get_DTI_Site_CandID_Visit {
-    my ($dir) =   @_;
-
-    if  ($dir =~  /\d\d\d\d\d\d_V(\d\d)/i)  { 
-        my  $visit  =   $1;
-        return  ($visit);
-    } else {
-        return  undef;
-    }
-
-}
-
 
 =pod
 Fetch native DTI based on QCReport's name.
@@ -189,7 +172,7 @@ Inputs: - $profile: prod file in ~/.neurodb
         - $dbh: database handler
 =cut
 sub runDTIPrepPipeline {
-    my ($data_dir, $profile, $dir, $protocol, $QCReport_array, $DTIPrepVersion, $dbh) = @_;
+    my ($data_dir, $profile, $protocol, $QCReport_array, $DTIPrepVersion, $dbh) = @_;
 
     # Create list of native files to call DTIPrep_pipeline.pl
     my (@native_files);
@@ -197,8 +180,9 @@ sub runDTIPrepPipeline {
     foreach my $report (@$QCReport_array) {
         my ($native) = &getNativeDTI($report, $data_dir, $dbh);
         if ($native) {
+            my $native_dir  = dirname($native);
             open (NATLIST, ">>$native_list") or die "Can't write to file '$native_list' [$!]\n";
-            print NATLIST "$native\n";
+            print NATLIST "$native_dir\n";
             close (NATLIST);
             push (@native_files, $native);
         } else {
