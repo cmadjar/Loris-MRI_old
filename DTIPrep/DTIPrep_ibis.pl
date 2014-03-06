@@ -22,7 +22,7 @@ my @args;
 # Set the help section
 my  $Usage  =   <<USAGE;
 
-Will parse DTIPrep outputs directories and call DTIPrepRegister.pl on each of them after have determined source DTI file, protocol file...
+Will parse DTIPrep outputs directories and call DTIPrep_pipeline.pl on each of them after having determined the source DTI file, protocol file...
 
 Usage: $0 [options]
 
@@ -61,11 +61,11 @@ if (!$DTIPrepVersion) {
 
 # Needed for log file
 my  $data_dir    =  $Settings::data_dir;
-my  $log_dir     =  "$data_dir/logs/DTIPrep_registrationPreparation";
+my  $log_dir     =  "$data_dir/logs/DTIPrep_Preparation";
 my  ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst)=localtime(time);
 my  $date        =  sprintf("%4d-%02d-%02d_%02d:%02d:%02d",$year+1900,$mon+1,$mday,$hour,$min,$sec);
 my  $log         =  "$log_dir/DTIPrep_preparation_$date.log";
-open(LOG,">>$log");
+open(LOG, ">>", $log) or die "Can't write to file '$log' [$!]\n";
 print LOG "Log file, $date\n\n";
 
 
@@ -98,17 +98,25 @@ foreach my $dir (@dirs)   {
     #######################
     ####### Step 2: #######  Grep protocol based on the visit in the directory
     #######################
-    my $protocol;
-    if ($dir =~  /\d\d\d\d\d\d_V(\d\d)$/i)  {       
-        my  $visit_nb   = $1;
-        ($protocol)     = &Settings::getDTIPrepProtocol($visit_nb);
+    my ($protocol, $visit, $candID);
+    if ($dir =~  /(\d\d\d\d\d\d)_V(\d\d)$/i)  {       
+        $candID     = $1;
+        my $visit_nb= $2;
+        $visit      = "V" . $visit_nb;
+        ($protocol) = &Settings::getDTIPrepProtocol($visit_nb);
     }
-    next if (!$protocol);
+    next if ((!$protocol) || (!$candID) || (!$visit));
 
     #######################
-    ####### Step 3: ####### Run DTIPrepRegister.pl 
+    ####### Step 3: ####### Copy or move data into pipeline folder
     #######################
-    &runDTIPrepRegister($profile, $dir, $protocol, $QCReport, $DTIPrepVersion, $dbh);
+    my ($QCoutdir) = &moveProcessed($data_dir, $candID, $visit, $protocol, $dir, $DTIPrepVersion);
+    next if (!$QCoutdir);
+
+    #######################
+    ####### Step 4: ####### Run DTIPrepRegister.pl 
+    #######################
+    &runDTIPrepPipeline($data_dir, $profile, $dir, $protocol, $QCReport, $DTIPrepVersion, $dbh);
     ## Need to run it for each DTI acquisition (a.k.a. each $QCReport found in $dir)
 
 }
@@ -146,7 +154,7 @@ Inputs: $report: QCReport to use to fetch native DTI
 Output: $nativeDTI: native DTI found in the database corresponding to $report
 =cut
 sub getNativeDTI {
-    my ($report, $dbh) = @_;
+    my ($report, $data_dir, $dbh) = @_;
 
     my $query   = "SELECT File " .
                   "FROM files "  . 
@@ -163,7 +171,7 @@ sub getNativeDTI {
     $sth->execute($where);
     if ($sth->rows > 0) {
         my $row = $sth->fetchrow_hashref();
-        $nativeDTI  = $row->{'File'};
+        $nativeDTI  = $data_dir . "/" . $row->{'File'};
     }
 
     return ($nativeDTI);
@@ -180,24 +188,73 @@ Inputs: - $profile: prod file in ~/.neurodb
         - $QCReport_array: list of QCReports found in $dir (one per native DTI file)
         - $dbh: database handler
 =cut
-sub runDTIPrepRegister {
-    my ($profile, $dir, $protocol, $QCReport_array, $DTIPrepVersion, $dbh) = @_;
+sub runDTIPrepPipeline {
+    my ($data_dir, $profile, $dir, $protocol, $QCReport_array, $DTIPrepVersion, $dbh) = @_;
 
-    my $command = "perl DTIPrepRegister.pl"         .
-                    " -profile "        . $profile  . 
-                    " -DTIPrep_subdir " . $dir      .
-                    " -DTIPrepProtocol ". $protocol .
-                    " -DTIPrepVersion " . $DTIPrepVersion ;
-
+    # Create list of native files to call DTIPrep_pipeline.pl
+    my (@native_files);
+    my $native_list = "/tmp/native_list.txt";
     foreach my $report (@$QCReport_array) {
-        my ($native) = &getNativeDTI($report, $dbh);
+        my ($native) = &getNativeDTI($report, $data_dir, $dbh);
         if ($native) {
-            $command = $command . "-DTI_file $native";
-            print LOG "Running $command\n";
-            system($command);
+            open (NATLIST, ">>$native_list") or die "Can't write to file '$native_list' [$!]\n";
+            print NATLIST "$native\n";
+            close (NATLIST);
+            push (@native_files, $native);
         } else {
             print LOG "Could not find native DTI corresponding to $report.\n";
             next; 
         }
     }  
+
+    # Call DTIPrep_pipeline.pl if at list one native file was found
+    my $command = "perl DTIPrep_pipeline.pl"              .
+                    " -profile "        . $profile        .  
+                    " -list "           . $native_list    .
+                    " -DTIPrepProtocol ". $protocol       .
+                    " -DTIPrepVersion " . $DTIPrepVersion .
+                    " -norunDTIPrep "   .
+                    " -registerFilesInDB ";
+    if (@native_files) {
+        print LOG "Running $command\n";
+        system($command);
+    }
+}
+
+
+=pod
+Move processed data into $data_dir/pipelines folder according to DTIPrep pipeline's convention.
+Inputs: - $data_dir = LORIS MRI data directory (from Settings)
+        - $candID   = subject ID
+        - $visit    = visit name
+        - $protocol = DTIPrep protocol used for processing
+        - $dir      = directory containing processed data
+        - $DTIPrepVersion   = DTIPrep Version used to process data
+Outputs:- undef if data could not be moved to $data_dir/pipeline
+        - 1 if all data were moved successfully to $data_dir/pipeline
+=cut
+sub moveProcessed {
+    my ($data_dir, $candID, $visit, $protocol, $dir, $DTIPrepVersion) = @_;
+
+    # Create pipeline directory tree
+    my $outdir      = $data_dir . "/pipelines/DTIPrep/" . $DTIPrepVersion;
+    my ($QCoutdir)  = &DTI::createOutputFolders($outdir, $candID, $visit, $protocol, 1);
+    return undef if (!$QCoutdir);
+
+    # Count number of files present in $dir
+    my $count   = `ls $dir | wc -l`;
+
+    # Move processed files into pipeline tree
+    my $cmd = "cp $dir/* $QCoutdir";
+    system($cmd);
+    
+    # Check if all files have been moved to $QCoutdir
+    my $new_count   = `ls $QCoutdir | wc -l`;
+    if ($new_count == $count) {
+        print LOG "All files stored in $dir were successfully moved to $QCoutdir";
+        return ($QCoutdir);
+    } else {
+        print LOG "ERROR: all files stored in $dir were not successfully moved to $QCoutdir";
+        return undef;
+    }
 }
