@@ -247,6 +247,10 @@ sub moveProcessed {
     # Move processed files into pipeline tree
     my $cmd = "cp $dir/* $QCoutdir";
     system($cmd);
+    # Copy DTIPrep protocol into $QCoutdir
+    my $cmd2= "cp $protocol $QCoutdir\n";
+    system($cmd2);
+    $count  = $count + 1; # add protocol file to number of processed files
     
     # Check if all files have been moved to $QCoutdir
     my $new_count   = `ls $QCoutdir | wc -l`;
