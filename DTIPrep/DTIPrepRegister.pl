@@ -811,7 +811,7 @@ sub checkPostprocessFiles {
         # Store tool used for Postprocessing in %mri_files
         $mri_files->{'Postproc'}{'Tool'}    = "DTIPrep";
 
-        # Add specific files for IBIS group
+        # File specific to DTIPrep post-processing
         my  $IDWI_minc      =   $DTIrefs->{$dti_file}->{'Postproc'}->{'IDWI'}->{'minc'};
         my  $IDWIbet_minc   =   $DTIrefs->{$dti_file}->{'Postproc'}->{'IDWI_bet'}->{'minc'};
         my  $tensor_minc    =   $DTIrefs->{$dti_file}->{'Postproc'}->{'tensor'}->{'minc'};
