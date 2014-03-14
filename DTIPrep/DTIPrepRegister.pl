@@ -1,4 +1,4 @@
-#! /usr/bin/perl
+#!/usr/bin/perl -w
 
 use strict;
 use warnings;
@@ -1164,7 +1164,7 @@ sub registerFile  {
     print LOG "\t- inputFileIDs is: $inputs\n";
 
     # Register the file into the database using command $cmd
-    my $cmd =   "perl ../uploadNeuroDB/register_processed_data.pl " .
+    my $cmd =   "register_processed_data.pl " .
                     "-profile $profile " .
                     "-file $file " .
                     "-sourceFileID $src_fileID " .
