@@ -266,6 +266,8 @@ sub loadFileFromDisk {
         $fileType = 'txt';
     } elsif($file =~ /\.nrrd$/) {
         $fileType = 'nrrd';
+    } elsif($file =~ /\.ds$/) {
+        $fileType = 'ds';
     }
     $this->setFileData('FileType', $fileType) if defined $fileType;
     
