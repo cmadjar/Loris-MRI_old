@@ -465,7 +465,6 @@ sub move_minc {
     my ($minc,$subjectIDsref, $minc_type, $fileref,$prefix,$data_dir) = @_;
     my ($new_name, $version,$cmd,$new_dir,$extension,@exts,$dir);
     my $concat = "";
-    my %subjectIDs = $subjectIDsref;
     ############################################################
     ###figure out where to put the files########################
     ############################################################
@@ -480,15 +479,15 @@ sub move_minc {
     $concat = '_concat' if $$minc =~ /_concat/;
     $new_dir = "$dir/native";
     $version = 1;
-    $new_name = $prefix."_".$subjectIDs{'CandID'}."_".$subjectIDs{'visitLabel'}
+    $new_name = $prefix."_".$subjectIDsref->{'CandID'}."_".$subjectIDsref->{'visitLabel'}
                 ."_".$minc_type."_".sprintf("%03d",$version).
                 $concat.".$extension";
     $new_name =~ s/ //;
     $new_name =~ s/__+/_/g;
     while(-e "$new_dir/$new_name") {
         $version = $version + 1;
-        $new_name =  $prefix."_".$subjectIDs{'CandID'}."_".
-                     $subjectIDs{'visitLabel'}."_".$minc_type."_".
+        $new_name =  $prefix."_".$subjectIDsref->{'CandID'}."_".
+                     $subjectIDsref->{'visitLabel'}."_".$minc_type."_".
                      sprintf("%03d",$version).$concat.".$extension";
         $new_name =~ s/ //;
         $new_name =~ s/__+/_/g;
@@ -508,7 +507,7 @@ sub move_minc {
 sub registerScanIntoDB {
 
     my $this = shift;
-    my ($file, $tarchiveInfo,$subjectIDsref,$acquisitionProtocol, $minc, @checks,
+    my ($file, $tarchiveInfo,$subjectIDsref,$acquisitionProtocol, $minc, $checks,
       $reckless, $tarchive, $sessionID) = @_;
     my $data_dir = $Settings::data_dir;
     my $prefix   = $Settings::prefix;
@@ -523,7 +522,7 @@ sub registerScanIntoDB {
         || (defined(&Settings::isFileToBeRegisteredGivenProtocol)
             && Settings::isFileToBeRegisteredGivenProtocol($acquisitionProtocol)
            )
-        ) && $checks[0] !~ /exclude/) {
+        ) && $checks->[0] !~ /exclude/) {
 
         ########################################################
         # convert the textual scan_type into the scan_type id###
@@ -571,7 +570,6 @@ sub registerScanIntoDB {
         # register into the db fixme if I ever want a dry run## 
         ########################################################
         print "Registering file into db\n" if $this->{debug};
-        $fileID;
         $fileID = &NeuroDB::MRI::register_db($file);
         print "FileID: $fileID\n" if $this->{debug}
 
@@ -579,8 +577,7 @@ sub registerScanIntoDB {
         ###update mri_acquisition_dates table###################
         ########################################################
         &$this->update_mri_acquisition_dates($sessionID, 
-                                             $tarchiveInfo->{'DateAcquired'},
-                                             $this->{dbhr}
+                                             $tarchiveInfo->{'DateAcquired'}
                                             );
     }
 }
