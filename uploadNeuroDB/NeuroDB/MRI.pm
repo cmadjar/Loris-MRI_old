@@ -1013,6 +1013,7 @@ sub compute_hash {
 	$ctx->add($file->getParameter('patient:birthdate'));          # Patient DOB
 	$ctx->add($file->getParameter('study_instance_uid'));         # StudyInstanceUID
 	$ctx->add($file->getParameter('series_description'));         # SeriesDescription
+    $ctx->add($file->getParameter('processing:intergradient_rejected'));
     }
 
     # finally generate the hex digest
