@@ -113,6 +113,9 @@ close(DIRS);
 # Loop through native directories
 foreach my $nativedir (@nativedirs)   {
     chomp ($nativedir);
+    # Remove double / and last / character from nativedir
+    $nativedir  =~ s/\/\//\//;
+    $nativedir  =~ s/\/$//;
 
     
     #######################
