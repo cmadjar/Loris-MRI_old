@@ -706,7 +706,7 @@ sub modify_header {
 
     # insert mincheader unless mincheader field already inserted ($hdr_val eq $value)
     my  $cmd    =   "minc_modify_header -sinsert $argument=$value $minc";
-    system($cmd)    unless ($value eq $hdr_val);
+    system($cmd)    unless (($hdr_val) && ($value eq $hdr_val));
 
     # check if header information was indeed inserted in minc file
     my $hdr_val2 =   &DTI::fetch_header_info($argument, $minc, $awk);
