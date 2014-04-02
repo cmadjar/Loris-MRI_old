@@ -733,9 +733,13 @@ sub fetch_header_info {
 
     my  $val    =   `mincheader $minc | grep $field | awk '{print $awk}' | tr '\n' ' '`;
     my  $value  =   $val    if  $val !~ /^\s*"*\s*"*\s*$/;
-    $value      =~  s/^\s+//;                           # remove leading spaces
-    $value      =~  s/\s+$//;                           # remove trailing spaces
-    $value      =~  s/;//   unless ($keep_semicolon);   # remove ";" unless $keep_semicolon is defined
+    if ($value) {
+        $value      =~  s/^\s+//;                           # remove leading spaces
+        $value      =~  s/\s+$//;                           # remove trailing spaces
+        $value      =~  s/;//   unless ($keep_semicolon);   # remove ";" unless $keep_semicolon is defined
+    } else {
+        return undef;
+    }
 
     return  ($value);
 }
