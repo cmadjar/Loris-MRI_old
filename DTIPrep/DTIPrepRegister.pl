@@ -1065,7 +1065,7 @@ Outputs: - 1 if all information has been successfully inserted
 sub insertPipelineSummary   {
     my ($minc, $data_dir, $XMLReport, $scanType)   =   @_;
 
-    my ($summary)  =   &getRejectedDirections($data_dir, $XMLReport);
+    my ($summary)   =   &getRejectedDirections($data_dir, $XMLReport);
     
     # insert slice wise excluded gradients in mincheader
     my $rm_slicewise        = $summary->{'EXCLUDED'}{'slice'}{'txt'};
@@ -1086,7 +1086,7 @@ sub insertPipelineSummary   {
     # insert total count (and intergradient count except if scanType is noRegQCedDTI
     my $count_intergradient = $summary->{'EXCLUDED'}{'intergrad'}{'nb'};
     my $count_total         = $summary->{'EXCLUDED'}{'total'}{'nb'};
-my ($rm_intergradient, $insert_gradient, $total);
+    my ($rm_intergradient, $insert_gradient, $total);
     if ($scanType =~ /noRegQCedDTI/i) {
         # compute total number of excluded gradients and insert it in mincheader
         $total  = $count_total - $count_intergradient;
@@ -1100,7 +1100,6 @@ my ($rm_intergradient, $insert_gradient, $total);
         # total is equal to count_total
         $total  = $count_total;
     }
-
     # compute total number of excluded gradients and insert it in mincheader
     my ($total_insert)     = &DTI::modify_header('processing:total_rejected', 
                                                  $total, 
