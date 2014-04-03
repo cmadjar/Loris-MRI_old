@@ -907,59 +907,8 @@ sub RGBpik_creation {
 
 
 
-=pod
-Create a default notes file for QC summary and manual notes.
-Inputs:  - $QC_out: output DTI(Prep) minc file
-         - $note_file: note file to insert rejected information into
-         - $QC_report: DTIPrep $QC_report containing rejected directions information
-         - $reject_thresh: threshold after which too many directions were rejected (a.k.a. QC fail)
-=cut
-sub createNoteFile {
-    my ($QC_out, $note_file, $QC_report, $reject_thresh)    =   @_;
-
-    my ($rm_slicewise, $rm_interlace, $rm_intergradient)    =   getRejectedDirections($QC_report);
-
-    my $count_slice     =   insertNote($note_file, $rm_slicewise,      "slicewise correlations");
-    my $count_inter     =   insertNote($note_file, $rm_interlace,      "interlace correlations");
-    my $count_gradient  =   insertNote($note_file, $rm_intergradient,  "gradient-wise correlations");
-
-    my $total           =   $count_slice + $count_inter + $count_gradient;
-    open    (NOTES, ">>$note_file");
-    print   NOTES   "Total number of directions rejected by auto QC= $total\n";
-    close   (NOTES);
-    if  ($total >=  $reject_thresh) {   
-        print NOTES "FAIL\n";
-    } else {
-        print NOTES "PASS\n";
-    }
-
-}
 
 
-
-
-
-
-=pod
-Get the list of directions rejected by DTI per type 
-(i.e. slice-wise correlations, inter-lace artifacts, inter-gradient artifacts).
-Inputs:  - $QCReport: DTIPrep QC report
-Outputs: - $rm_slicewise: list of removed directions due to slice wise correlations
-         - $rm_interlace: list of removed directions due to interlace correlations
-         - $rm_intergradient: list of removed directions due to intergradient correlations
-=cut
-sub getRejectedDirections   {
-    my ($QCReport)  =   @_;
-
-    ## these are the unique directions that were rejected due to slice-wise correlations
-    my $rm_slicewise    =   `cat $QCReport | grep whole | sort -k 2,2 -u | awk '{print \$2}'|tr '\n' ','`;
-    ## these are the unique directions that were rejected due to inter-lace artifacts
-    my $rm_interlace    =   `cat $QCReport | sed -n -e '/Interlace-wise Check Artifacts/,/================================/p' | grep '[0-9]' | sort -k 1,1 -u | awk '{print \$1}'|tr '\n' ','`;
-    ## these are the unique directions that were rejected due to inter-gradient artifacts
-    my $rm_intergradient=   `cat $QCReport | sed -n -e '/Inter-gradient check Artifacts::/,/================================/p' | grep '[0-9]'| sort -k 1,1 -u  | awk '{print \$1}'|tr '\n' ','`;
-    
-    return ($rm_slicewise, $rm_interlace, $rm_intergradient);
-}
 
 
 
@@ -1058,3 +1007,110 @@ sub convert_DTIPrep_postproc_outputs {
 
 }
 
+
+
+
+
+
+=pod
+Summarize which directions were rejected by DTIPrep for slice-wise correlations, 
+inter-lace artifacts, inter-gradient artifacts.
+Inputs:  - $data_dir = data_dir defined in the config file
+         - $QCReport = DTIPrep's QC txt report to extract rejected directions
+Outputs: - $rm_slicewise        = directions rejected due to slice wise correlations (number)
+         - $rm_interlace        = directions rejected due to interlace artifacts (number)
+         - $rm_intergradient    = directions rejected due to inter-gradient artifacts (number)
+=cut
+sub getRejectedDirections   {
+    my ($XMLReport)  =   @_;
+
+    # Read XML report into a hash
+    my ($outXMLrefs)    = &DTI::readDTIPrepXMLprot($XMLReport);
+
+    # Initialize variables
+    my ($tot_grads, $slice_excl, $grads_excl, $lace_excl, $tot_excl);
+    $tot_grads  = $slice_excl = $grads_excl = $lace_excl = $tot_excl = 0;
+    my (@rm_slice, @rm_interlace, @rm_intergrads);
+
+    foreach my $key (keys $outXMLrefs->{"entry"}{"DWI Check"}{'entry'}) {
+        # Next unless this is a gradient
+        next unless ($key =~ /^gradient_/);
+
+        # Grep gradient number
+        my $grad_nb = $key;
+        $grad_nb    =~ s/gradient_[0]+//i;
+
+         # Grep processing status for the gradient
+        my $status  = $outXMLrefs->{"entry"}{"DWI Check"}{'entry'}{$key}{'processing'};
+
+        # Count number of gradients with different exclusion status
+        if ($status =~ /EXCLUDE_SLICECHECK/i) {
+            $slice_excl = $slice_excl + 1;
+            push (@rm_slice, $grad_nb);
+            $tot_excl   = $tot_excl + 1;
+        } elsif ($status =~ /EXCLUDE_GRADIENTCHECK/i) {
+            $grads_excl = $grads_excl + 1;
+            push (@rm_intergrads, $grad_nb);
+            $tot_excl   = $tot_excl + 1;
+        } elsif ($status =~ /EXCLUDE_INTERLACECHECK/i) {
+            $lace_excl  = $lace_excl + 1;
+            push (@rm_interlace, $grad_nb);
+            $tot_excl   = $tot_excl + 1;
+        }
+        $tot_grads  = $tot_grads + 1;
+    }
+
+    # Summary hash storing all DTIPrep gradient exclusion information
+    my (%summary);
+    # Total number of gradients in native DTI
+    $summary{'total'}{'nb'}                  = $tot_grads;
+    # Total number of gradients excluded from QCed DTI
+    $summary{'EXCLUDED'}{'total'}{'nb'}      = $tot_excl;
+    # Total number of gradients included in QCed DTI
+    $summary{'INCLUDED'}{'total'}{'nb'}      = $tot_grads - $tot_excl;
+    # Summary of artifact exclusions
+    $summary{'EXCLUDED'}{'slice'}{'nb'}      = $slice_excl;
+    $summary{'EXCLUDED'}{'slice'}{'txt'}     = "\'Directions "
+                                                    . join(',', @rm_slice)
+                                                    . "(" . $slice_excl . ")\'";
+    $summary{'EXCLUDED'}{'intergrad'}{'nb'}  = $grads_excl;
+    $summary{'EXCLUDED'}{'intergrad'}{'txt'} = "\'Directions "
+                                                    . join(',', @rm_intergrads)
+                                                    . "(" . $grads_excl . ")\'";
+    $summary{'EXCLUDED'}{'interlace'}{'nb'}  = $lace_excl;
+    $summary{'EXCLUDED'}{'interlace'}{'txt'} = "\'Directions "
+                                                    . join(',', @rm_interlace)
+                                                    . "(" . $lace_excl . ")\'";
+    # Determine max number of rejected directions allowed
+    my $percent_thre                         = $Settings::reject_thresh;
+    # int truncates value returned (which is what we want here)
+    $summary{'max_reject_thresh'}{'nb'}      = int($tot_grads * $percent_thre / 100);
+
+    return (\%summary);
+}
+
+
+
+
+
+
+
+sub getRejectedCounts {
+    my ($XMLReport) = @_;    
+
+    my ($summary)           = &DTI::getRejectedDirections($XMLReport);
+    # Nb of rejected frames due to slice wise correlations
+    my $count_slice     = $summary->{'EXCLUDED'}{'slice'}{'nb'};
+    # Nb of rejected frames due to interlace wise correlations
+    my $count_interlace = $summary->{'EXCLUDED'}{'interlace'}{'nb'};
+    # Nb of rejected frames due to slice wise + interlace correlations
+    my $count_noReg     = $count_slice + $count_interlace;
+
+    # $count_QCed and $thresh will be used to check if QCedDTI were created by pipeline 
+    # and need to be converted 
+    my $count_intergrad = $summary->{'EXCLUDED'}{'intergrad'}{'nb'};
+    my $count_QCed      = $count_noReg + $count_intergrad;    
+    my $thresh           = $summary->{'max_reject_thresh'}{'nb'};
+
+    return ($count_noReg, $count_QCed, $thresh);
+}

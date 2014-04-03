@@ -548,7 +548,7 @@ sub check_and_convertPreprocessedFiles {
 
     my $at_least_one_success    = 0;
     foreach my $dti_file (@$DTIs_list) {
-
+    
         # Check if all DTIPrep preprocessing (and postprocessing) outputs are available
         print LOG "\n##################\n";
         print LOG "# Check and convert preprocessed files.";
@@ -609,6 +609,11 @@ sub checkPreprocessOutputs {
     my $QCProt      = $DTIrefs->{$dti_file}{'Preproc'}{'QCProt'}{'xml'};
     my $QCed2_nrrd  = $DTIrefs->{$dti_file}{'Preproc'}{'QCed2'}{'nrrd'};
 
+    # Grep rejected directions counts and threshold
+    my ($count_noReg, 
+        $count_QCed, 
+        $thresh)    = &DTI::getRejectedCounts($QCXmlReport);
+
     my $err_message = "\nERROR: Could not find all DTIPrep preprocessing outputs in $outdir.\n" .
                         "\tQCed nrrd:   $QCed_nrrd\n"   .
                         "\tQCTxtReport: $QCTxtReport\n" .
@@ -617,9 +622,16 @@ sub checkPreprocessOutputs {
 
     print LOG "\t 1. Check that preprocessed files exist\n";
     # if all outputs exists return 1, otherwise return undef
-    if ((-e $QCed_nrrd) && (-e $QCTxtReport) && (-e $QCXmlReport) && (-e $QCProt)) {
-        # additional check of output existence depending on whether $QCed2_minc is defined (secondary output produced by DTIPrep)
-        if ((($QCed2_nrrd) && (-e $QCed2_nrrd)) || (!$QCed2_nrrd)) {
+    # if QCed_nrrd exists or nb of rejected direction >= threshold
+    # plus can find all reports and protocol
+    if (($count_QCed >= $thresh) && (-e $QCTxtReport) && (-e $QCXmlReport) && (-e $QCProt)) {
+        print LOG "\t\t-> All QC report and DTIPrep protocol found." .
+                    " No QCed file found as nb of rejected directions > threshold.\n";
+        return 1;
+    } elsif ((-e $QCed_nrrd) && (-e $QCTxtReport) && (-e $QCXmlReport) && (-e $QCProt)) {
+        # additional check of output existence depending on whether $QCed2_minc is defined (secondary output produced by DTIPrep) and number of rejected directions is not above threshold
+        if ((($QCed2_nrrd) && ((-e $QCed2_nrrd) || ($count_noReg >= $thresh))) 
+                || (!$QCed2_nrrd)) {
             print LOG "\t\t-> All DTIPrep preprocessing outputs were found in $outdir.\n";
             return 1;
         } else {
@@ -656,13 +668,32 @@ sub convertPreproc2mnc {
     my $QCed2_nrrd  = $DTIrefs->{$dti_file}{'Preproc'}{'QCed2'}{'nrrd'};
     my $QCed2_minc  = $DTIrefs->{$dti_file}{'Preproc'}{'QCed2'}{'minc'};
 
+    # Grep rejected directions counts and threshold
+    my $XMLReport   = $DTIrefs->{$dti_file}{'Preproc'}{'QCReport'}{'xml'};
+    my ($count_noReg, 
+        $count_QCed, 
+        $thresh)    = &DTI::getRejectedCounts($XMLReport);
+
     print LOG "\t 2. Convert preprocessed files to minc\n";
 
     # Convert QCed nrrd file back into minc file (with updated header)
     my  ($insert_header, $convert_status);
-    if  (-e $QCed_nrrd) {
-        if ( ((!$QCed2_minc) && (-e $QCed_minc)) 
-                || (($QCed2_minc) && (-e $QCed_minc) && (-e $QCed2_minc))) {
+    # if nb of directions rejected exceeds threshold
+    if  ($count_noReg >= $thresh) {
+        print LOG "\t\t-> QCed & QCed2 nrrd files do not exist as nb of rejected directions exceed threshold\n.";
+        return 1;
+    } elsif (($count_QCed >= $thresh) && (($QCed2_nrrd) && (-e $QCed2_nrrd))) {
+        print LOG "No QCed nrrd converted as nb of rejected directions exceed threshold.\n";
+        if (-e $QCed_minc) {
+            print LOG "\t\t-> QCed2 nrrd already converted to minc file.";
+            return 1;
+        } else {    
+            print LOG "\t\t-> Converting QCed2 nrrd to minc.";
+            ($convert_status)   = &DTI::convert_DTI($QCed2_nrrd, $QCed2_minc, '--nrrd-to-minc --dwi');
+            ($insert_header)    = &DTI::insertMincHeader($dti_file, $data_dir, $QCed2_minc, $QCTxtReport, $DTIPrepVersion) if ($convert_status);
+        }
+    } elsif (-e $QCed_nrrd) {
+        if (((!$QCed2_minc) && (-e $QCed_minc)) || (($QCed2_minc) && (-e $QCed_minc) && (-e $QCed2_minc))) {
             print LOG "\t\t-> QCed minc(s) already exist(s).\n";
             return 1;
         } else {
@@ -710,6 +741,18 @@ sub mincdiffusionPipeline {
 
     my $at_least_one_success    = 0;
     foreach my $dti_file (@$DTIs_list) {
+        # Check if enough directions left to continue post-processing
+        # Grep rejected directions counts and threshold
+        my $XMLReport   = $DTIrefs->{$dti_file}{'Preproc'}{'QCReport'}{'xml'};
+        my ($count_noReg,
+            $count_QCed,
+            $thresh)    = &DTI::getRejectedCounts($XMLReport);
+        if ($count_QCed >= $thresh) {
+            print LOG "Post processing has not been run on $dti_file due to rejected directions exceeding threshold.\n";
+            $at_least_one_success++;    
+            next;
+        }
+
         # Initialize variables
         my $QCed_minc   = $DTIrefs->{$dti_file}{'Preproc'}{'QCed'}{'minc'};
 
@@ -902,6 +945,17 @@ sub check_and_convert_DTIPrep_postproc_outputs {
 
     my $at_least_one_success    = 0;
     foreach my $dti_file (@$DTIs_list) {
+        # Check if enough directions left to continue post-processing
+        # Grep rejected directions counts and threshold
+        my $XMLReport   = $DTIrefs->{$dti_file}{'Preproc'}{'QCReport'}{'xml'};
+        my ($count_noReg,
+            $count_QCed,
+            $thresh)    = &DTI::getRejectedCounts($XMLReport);
+        if ($count_QCed >= $thresh) {
+            print LOG "Post processing has not been run on $dti_file due to rejected directions exceeding threshold.\n";
+            $at_least_one_success++;    
+            next;
+        }
         
         # Check if all DTIPrep post-processing output were created
         my $QCTxtReport = $DTIrefs->{$dti_file}->{'Preproc'}->{'QCReport'}->{'txt'};

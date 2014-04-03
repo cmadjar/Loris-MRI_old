@@ -1,4 +1,4 @@
-#! /usr/bin/perl
+#!/usr/bin/perl -w
 
 use strict;
 use warnings;
@@ -193,7 +193,7 @@ sub runDTIPrepPipeline {
     }  
 
     # Call DTIPrep_pipeline.pl if at list one native file was found
-    my $command = "perl DTIPrep_pipeline.pl"              .
+    my $command = "DTIPrep_pipeline.pl"              .
                     " -profile "        . $profile        .  
                     " -list "           . $native_list    .
                     " -DTIPrepProtocol ". $protocol       .

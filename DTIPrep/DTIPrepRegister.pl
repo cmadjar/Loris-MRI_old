@@ -159,8 +159,15 @@ if  (!$QCReport) {
     print LOG "\nERROR:\n\tSome process files are missing in $DTIPrep_subdir.\n";
     exit 33;
 }
+# Check if enough directions left to continue post-processing
+# Grep rejected directions counts and threshold
+my $XMLReport   = $DTIrefs->{$dti_file}{'Preproc'}{'QCReport'}{'xml'};
+my ($count_noReg,
+    $count_QCed,
+    $thresh)    = &DTI::getRejectedCounts($XMLReport);
+ 
 # If $QCed2_step is set, QCed2_minc should be defined in %mri_files hash! 
-if  (($QCed2_step) && (!$mri_files->{'Preproc'}{'QCed2'}{'minc'})) {
+if  (($QCed2_step) && (!$mri_files->{'Preproc'}{'QCed2'}{'minc'}) && ($count_noReg <= $thresh)) {
     print LOG "\nERROR:\n\tSecondary QCed DTIPrep nrrd & minc outputs are missing in $DTIPrep_subdir.\n";
     exit 33;
 }
@@ -210,6 +217,10 @@ if (!$registeredXMLReportFile) {
     $mri_files->{'Preproc'}{'QCReport'}{'xml'}  = $registeredXMLReportFile;
 }
 
+# read registered XML protocol
+$XMLReport      =~ s/$data_dir//;
+my ($summary)   = &DTI::getRejectedDirections("$data_dir/$XMLReport");
+
 
 
 
@@ -242,6 +253,23 @@ if (!$registeredQCReportFile) {
     ####### Step 6: #######  Register DTIPrep preprocessed minc files with associated reports and nrrd files
     #######################
 
+# Stop here if more than exclusion threshold directions are rejected
+# during slice wise and interlace wise checks
+# Nb of rejected frames due to slice wise correlations
+my $count_slice     = $summary->{'EXCLUDED'}{'slice'}{'nb'};
+# Nb of rejected frames due to interlace wise correlations
+my $count_interlace = $summary->{'EXCLUDED'}{'interlace'}{'nb'};
+# Nb of rejected frames due to slice wise + interlace correlations
+my $count_noReg     = $count_slice + $count_interlace;
+# Max number of rejected directions allowed
+my $thresh          = $summary->{'max_reject_thresh'}{'nb'};
+if ($count_noReg >= $thresh) {
+    # Stop
+    print LOG "No nrrd or minc file to register. " .
+                "Number of rejected directions >= to allowed threshold $thresh.";
+    exit 0;
+}
+
 # 6a. Register QCed2 files if defined
 if ($mri_files->{'Preproc'}{'QCed2'}{'minc'}) {
     my $QCed2_registered    = &register_Preproc($mri_files,
@@ -254,6 +282,18 @@ if ($mri_files->{'Preproc'}{'QCed2'}{'minc'}) {
                                                 'QCed2'
                                                 );
     $mri_files->{'Preproc'}{'QCed2'}{'minc'} = $QCed2_registered;
+}
+
+# Stop here if more than exclusion threshold directions are rejected
+# during slice wise, interlace and gradient wise checks
+# Nb of rejected frames due to gradient correlations
+my $count_intergrad = $summary->{'EXCLUDED'}{'intergrads'}{'nb'};
+my $count_QCed      = $count_noReg + $count_intergrad;
+if ($count_QCed >= $thresh) {
+    # Stop
+    print LOG "No nrrd or minc file to register after intergradient checks. " .
+                "Number of rejected directions >= to allowed threshold $thresh.";
+    exit 0;
 }
 
 # Register QCed files
@@ -741,8 +781,27 @@ sub checkPreprocessFiles {
     my  $QCed2_nrrd =   $DTIrefs->{$dti_file}->{'Preproc'}->{'QCed2'}{'nrrd'};
     my  $QCed2_minc =   $DTIrefs->{$dti_file}->{'Preproc'}->{'QCed2'}{'minc'};
 
+    # Grep rejected directions counts and threshold
+    my ($count_noReg,
+        $count_QCed,
+        $thresh)    = &DTI::getRejectedCounts($XMLReport);
+
+
     # Check that all outputs exist in the filesystem and return them (except the nrrd ones).
-    if ((-e $XMLProtocol) && (-e $QCReport) && (-e $XMLReport) && (-e $QCed_nrrd) && (-e $QCed_minc)) {
+    # If rejected directions before registration step exceed threshold, return reports and protocol
+    if (($count_noReg >= $thresh) && (-e $XMLProtocol) && (-e $QCReport) && (-e $XMLReport)) {
+
+        return ($XMLProtocol, $QCReport, $XMLReport);
+
+    # If rejected directions after registration step exceed threshold, return reports and protocol
+    # and define $QCed2 outputs
+    } elsif (($count_QCed >= $thresh) && (-e $XMLProtocol) && (-e $QCReport) && (-e $XMLReport)) {
+
+        $mri_files->{'Preproc'}{'QCed2'}{'nrrd'}     = $QCed2_nrrd;
+        $mri_files->{'Preproc'}{'QCed2'}{'minc'}     = $QCed2_minc;
+        return ($XMLProtocol, $QCReport, $XMLReport);
+
+    } elsif ((-e $XMLProtocol) && (-e $QCReport) && (-e $XMLReport) && (-e $QCed_nrrd) && (-e $QCed_minc)) {
 
         $mri_files->{'Preproc'}{'QCed'}{'nrrd'}      = $QCed_nrrd;
         $mri_files->{'Preproc'}{'QCed'}{'minc'}      = $QCed_minc;
@@ -786,6 +845,17 @@ Function that checks if all postprocessing files (from DTIPrep or mincdiffusion)
 =cut
 sub checkPostprocessFiles {
     my ($dti_file, $DTIrefs, $mri_files) = @_;
+
+    # Check if enough directions left to continue post-processing
+    # Grep rejected directions counts and threshold
+    my $XMLReport   = $DTIrefs->{$dti_file}{'Preproc'}{'QCReport'}{'xml'};
+    my ($count_noReg,
+        $count_QCed,
+        $thresh)    = &DTI::getRejectedCounts($XMLReport);
+    if ($count_QCed >= $thresh) {
+        print LOG "Post processing has not been run on $dti_file due to rejected directions exceeding threshold.\n";
+        return 1;
+    }
 
     # Determine file path of each postprocessed outputs common to the two tools (DTIPrep & mincdiffusion)
     my  $RGB_minc       =   $DTIrefs->{$dti_file}->{'Postproc'}->{'RGB'}->{'minc'}; 
@@ -1065,7 +1135,8 @@ Outputs: - 1 if all information has been successfully inserted
 sub insertPipelineSummary   {
     my ($minc, $data_dir, $XMLReport, $scanType)   =   @_;
 
-    my ($summary)   =   &getRejectedDirections($data_dir, $XMLReport);
+    $XMLReport      =~ s/$data_dir//;
+    my ($summary)   = &DTI::getRejectedDirections("$data_dir/$XMLReport");
     
     # insert slice wise excluded gradients in mincheader
     my $rm_slicewise        = $summary->{'EXCLUDED'}{'slice'}{'txt'};
@@ -1116,84 +1187,6 @@ sub insertPipelineSummary   {
 }
 
 
-
-
-
-=pod
-Summarize which directions were rejected by DTIPrep for slice-wise correlations, 
-inter-lace artifacts, inter-gradient artifacts.
-Inputs:  - $data_dir = data_dir defined in the config file
-         - $QCReport = DTIPrep's QC txt report to extract rejected directions
-Outputs: - $rm_slicewise        = directions rejected due to slice wise correlations (number)
-         - $rm_interlace        = directions rejected due to interlace artifacts (number)
-         - $rm_intergradient    = directions rejected due to inter-gradient artifacts (number)
-=cut
-sub getRejectedDirections   {
-    my ($data_dir, $XMLReport)  =   @_;
-
-    # Remove $data_dir path from $QCReport in the case it is included in the path
-    $XMLReport =~ s/$data_dir//i;
-
-    # Read XML report into a hash
-    my ($outXMLrefs)    = &DTI::readDTIPrepXMLprot("$data_dir/$XMLReport");
-
-    # Initialize variables
-    my ($tot_grads, $slice_excl, $grads_excl, $lace_excl, $tot_excl);
-    $tot_grads  = $slice_excl = $grads_excl = $lace_excl = $tot_excl = 0;
-    my (@rm_slice, @rm_interlace, @rm_intergrads);
-
-    foreach my $key (keys $outXMLrefs->{"entry"}{"DWI Check"}{'entry'}) {
-        # Next unless this is a gradient
-        next unless ($key =~ /^gradient_/);
-
-        # Grep gradient number
-        my $grad_nb = $key;
-        $grad_nb    =~ s/gradient_[0]+//i;
-
-         # Grep processing status for the gradient
-        my $status  = $outXMLrefs->{"entry"}{"DWI Check"}{'entry'}{$key}{'processing'};
-
-        # Count number of gradients with different exclusion status
-        if ($status =~ /EXCLUDE_SLICECHECK/i) {
-            $slice_excl = $slice_excl + 1;
-            push (@rm_slice, $grad_nb);
-            $tot_excl   = $tot_excl + 1;
-        } elsif ($status =~ /EXCLUDE_GRADIENTCHECK/i) {
-            $grads_excl = $grads_excl + 1;
-            push (@rm_intergrads, $grad_nb);
-            $tot_excl   = $tot_excl + 1;
-        } elsif ($status =~ /EXCLUDE_INTERLACECHECK/i) {
-            $lace_excl  = $lace_excl + 1;
-            push (@rm_interlace, $grad_nb);
-            $tot_excl   = $tot_excl + 1;
-        }
-        $tot_grads  = $tot_grads + 1;
-    }
-
-    # Summary hash storing all DTIPrep gradient exclusion information
-    my (%summary);
-    # Total number of gradients in native DTI
-    $summary{'total'}{'nb'}                  = $tot_grads;
-    # Total number of gradients excluded from QCed DTI
-    $summary{'EXCLUDED'}{'total'}{'nb'}      = $tot_excl;
-    # Total number of gradients included in QCed DTI
-    $summary{'INCLUDED'}{'total'}{'nb'}      = $tot_grads - $tot_excl;
-    # Summary of artifact exclusions
-    $summary{'EXCLUDED'}{'slice'}{'nb'}      = $slice_excl;
-    $summary{'EXCLUDED'}{'slice'}{'txt'}     = "\'Directions "
-                                                    . join(',', @rm_slice)
-                                                    . "(" . $slice_excl . ")\'";
-    $summary{'EXCLUDED'}{'intergrad'}{'nb'}  = $grads_excl;
-    $summary{'EXCLUDED'}{'intergrad'}{'txt'} = "\'Directions "
-                                                    . join(',', @rm_intergrads)
-                                                    . "(" . $grads_excl . ")\'";
-    $summary{'EXCLUDED'}{'interlace'}{'nb'}  = $lace_excl;
-    $summary{'EXCLUDED'}{'interlace'}{'txt'} = "\'Directions "
-                                                    . join(',', @rm_interlace)
-                                                    . "(" . $lace_excl . ")\'";
-
-    return (\%summary);
-}
 
 
 
