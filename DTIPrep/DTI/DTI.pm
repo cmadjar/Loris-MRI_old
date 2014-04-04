@@ -30,7 +30,7 @@ use MNI::FileUtilities  qw(check_output_dirs);
 @ISA        = qw(Exporter);
 
 @EXPORT     = qw();
-@EXPORT_OK  = qw(createOutputFolders getFiles sortParam insertMincHeader create_processed_maps createNoteFile);
+@EXPORT_OK  = qw(createOutputFolders getFiles sortParam insertMincHeader create_processed_maps);
 
 
 
@@ -913,28 +913,6 @@ sub RGBpik_creation {
 
 
 
-
-
-
-=sub
-Insert into notes file the directions rejected due to a specific artifact.
-Inputs:  - $note_file: note file in which to insert rejected directions information
-         - $rm_directions: removed directions to be inserted in the note file
-         - $note_field: field (or reason) of rejected directions
-Outputs: - $count_dirs: number of directions rejected due to *field* artifact
-=cut
-sub insertNote    {
-    my ($note_file, $rm_directions, $note_field)    =   @_;
-
-    my @rm_dirs     =   split(',',$rm_directions);
-    my $count_dirs  =   scalar(@rm_dirs);
-
-    open    (NOTES, ">>$note_file");
-    print   NOTES   "Directions rejected due to $note_field: @rm_dirs ($count_dirs)\n";
-    close   (NOTES);
-
-    return  ($count_dirs);
-}
 
 
 
