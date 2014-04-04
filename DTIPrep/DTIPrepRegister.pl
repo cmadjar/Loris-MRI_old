@@ -287,7 +287,7 @@ if ($mri_files->{'Preproc'}{'QCed2'}{'minc'}) {
 # Stop here if more than exclusion threshold directions are rejected
 # during slice wise, interlace and gradient wise checks
 # Nb of rejected frames due to gradient correlations
-my $count_intergrad = $summary->{'EXCLUDED'}{'intergrads'}{'nb'};
+my $count_intergrad = $summary->{'EXCLUDED'}{'intergrad'}{'nb'};
 my $count_QCed      = $count_noReg + $count_intergrad;
 if ($count_QCed >= $thresh) {
     # Stop
@@ -799,6 +799,8 @@ sub checkPreprocessFiles {
 
         $mri_files->{'Preproc'}{'QCed2'}{'nrrd'}     = $QCed2_nrrd;
         $mri_files->{'Preproc'}{'QCed2'}{'minc'}     = $QCed2_minc;
+        $mri_files->{'Preproc'}{'QCed2'}{'scanType'} = 'noRegQCedDTI';
+        $mri_files->{'Preproc'}{'QCed2'}{'inputs'}   = $DTIrefs->{$dti_file}->{'Preproc'}->{'QCed2'}->{'inputs'};   
         return ($XMLProtocol, $QCReport, $XMLReport);
 
     } elsif ((-e $XMLProtocol) && (-e $QCReport) && (-e $XMLReport) && (-e $QCed_nrrd) && (-e $QCed_minc)) {
