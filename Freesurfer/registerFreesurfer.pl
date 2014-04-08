@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/perl -w
 
 use strict;
 use warnings;
@@ -7,6 +7,7 @@ use File::Basename;
 use FindBin;
 use Date::Parse;
 use XML::Simple;
+use File::Temp;
 use lib "$FindBin::Bin";
 
 # These are to load the DTI & DBI modules to be used
@@ -31,7 +32,7 @@ USAGE
 #Define the table describing the command-line options
 my @args_table  = (
     ["-profile",              "string", 1,  \$profile,          "name of the config file in ~/.neurodb."],
-    ["-Freesurf_subdir",       "string", 1,  \$Freesurf_subdir,   "Freesurfer directory storing the processed files to be registered"]
+    ["-Freesurf_subdir",       "string", 1,  \$Freesurf_subdir,   "Freesurfer directory storing the processed files to be registered. Name of this directory should be based on the input filename (a.k.a. project_dccid_visitLabel_scanType_acqNumber_freesurfer."]
                   );
 
 Getopt::Tabular::SetHelp ($Usage, '');
@@ -70,13 +71,18 @@ my $TmpDir      = tempdir($template, TMPDIR => 1, CLEANUP => 1 );
 my  $dbh    =   &DB::DBI::connect_to_db(@Settings::db);
 print LOG "\n==> Successfully connected to database \n";
 
-print LOG "\n==> DTI output directory is: $DTIPrep_subdir\n";
+print LOG "\n==> DTI output directory is: $Freesurf_subdir\n";
+
+# Determine input file used for processing
+my ($srcFileID) = &getInputFile($Freesurf_subdir);
+exit 33     unless ($srcFileID); 
+
 
 # Check that folder to zip is indeed a freesurfer output 
 # directory containing all processed subdirectories:
 # bem, label, mri, scripts, src, stats, surf, tmp, touch, trash
 my ($Freesurf_tar)  = &checkFreesurfDir($Freesurf_subdir, $TmpDir);
-
+exit 33     unless ($Freesurf_tar);
 
 
 
@@ -87,6 +93,44 @@ exit 0;
 ################
 ### Function ###
 ################
+
+
+
+sub getInputFile {
+    my ($Freesurf_subdir) = @_;
+
+    # Determine name of the source file
+    my $src_name;
+    if ($Freesurf_subdir =~ /([a-zA-Z0-9]+_\d+_[a-zA-Z]\d\d_[a-zA-Z0-9]+_\d\d\d)_freesurfer/i) {
+        $src_name   = $1;
+    }
+    return undef    unless ($src_name);
+
+    # Fetch source file ID from database
+    my $query   = "SELECT FileID " .
+                  "FROM files " .
+                  "WHERE File like ? "; 
+    my $sth     = $dbh->prepare($query);
+    my $like    = "%$src_name%";
+    $sth->execute($like);
+    my $fileID;
+    if  ($sth->rows > 0)    {
+        my $row =   $sth->fetchrow_hashref();
+        $fileID =   $row->{'FileID'};
+        return ($fileID);
+    }else   {
+        print LOG "WARNING: No fileID matches the dataset $src_name used to produce $Freesurf_subdir.\n\n\n";
+        return undef;
+    }
+}           
+
+
+
+
+
+
+
+
 
 sub checkFreesurfDir {
     my ($Freesurf_subdir, $TmpDir) = @_;
@@ -121,7 +165,7 @@ sub checkFreesurfDir {
         my $basename    = basename($subdir);
         my $cmd         = "cp $subdir $TmpDir/freesurfer/";
         system ($cmd);
-        $count += 1     if (-e "$TmpDir/freesurfer/$subdir");
+        $count += 1     if (-e "$TmpDir/freesurfer/$basename");
     }
 
     # if the 10 freesurfer subdirectories were not copied into /tmp, return undef
@@ -131,8 +175,9 @@ sub checkFreesurfDir {
     }
 
     # tar freesurfer directory stored in $TmpDir
-    my $tar = "$TmpDir/freesurfer.tar";
-    my $cmd = "tar -cf $tar $Tmp/freesurfer";
+    my $tarname = basename($Freesurf_subdir);
+    my $tar     = "$TmpDir/$tarname";
+    my $cmd     = "tar -cf $tar $TmpDir/freesurfer";
     system ($cmd);
 
     if (-e $tar) {
