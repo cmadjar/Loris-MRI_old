@@ -268,6 +268,8 @@ sub loadFileFromDisk {
         $fileType = 'nrrd';
     } elsif($file =~ /\.ds_\d+\.tar$/) {
         $fileType = 'ds';
+    } elsif($file =~ /\/.tar\/.gz$/) {
+	    $fileType = 'tar';
     }
     $this->setFileData('FileType', $fileType) if defined $fileType;
     
