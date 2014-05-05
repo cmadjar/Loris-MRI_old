@@ -132,8 +132,8 @@ foreach my $meg (@$meg_files) {
     my ($hdr)   = &getMEGhdrInfo($megdir, $meg, $TmpDir, $ctf_script); 
 
     # Tar MEG file in $tmpdir with extracted header information ($hdr, alias *_header.meta)
-    my $mtar    = $TmpDir  . "/r2m_" . $$subjectIDsref{'CandID'} . "_" . $$subjectIDsref{'visitLabel'} . "_" . basename($meg) . ".tar";
-    my $cmd     = "tar -cf $mtar $megdir/$meg";
+    my $mtar    = $TmpDir  . "/r2m_" . $$subjectIDsref{'CandID'} . "_" . $$subjectIDsref{'visitLabel'} . "_" . basename($meg) . ".tar.gz";
+    my $cmd     = "tar -czf $mtar $megdir/$meg";
     system ($cmd);
 
     # Create file object
@@ -322,7 +322,7 @@ sub move_meg {
 
     # figure out what to call files
     my $new_pref    = basename($meg); 
-    my $ext         = ".tar";
+    my $ext         = ".tar.gz";
     $new_pref       =~ s/$ext//i;
 
     my $version     = 1;

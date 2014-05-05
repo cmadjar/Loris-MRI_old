@@ -266,7 +266,7 @@ sub loadFileFromDisk {
         $fileType = 'txt';
     } elsif($file =~ /\.nrrd$/) {
         $fileType = 'nrrd';
-    } elsif($file =~ /\.ds_\d+\.tar$/) {
+    } elsif($file =~ /\.ds_\d+\.tar\.gz$/) {
         $fileType = 'ds';
     } elsif($file =~ /\/.tar\/.gz$/) {
 	    $fileType = 'tar';
