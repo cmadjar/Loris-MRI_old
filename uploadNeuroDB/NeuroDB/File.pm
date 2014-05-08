@@ -264,12 +264,12 @@ sub loadFileFromDisk {
         $fileType = 'xml';
     } elsif($file =~ /\.txt$/) {
         $fileType = 'txt';
-    } elsif($file =~ /\.nrrd$/) {
-        $fileType = 'nrrd';
-    } elsif($file =~ /\.ds_\d+\.tar\.gz$/) {
+    } elsif($file =~ /\.ds_\d+\.tgz$/) {
         $fileType = 'ds';
-    } elsif($file =~ /\/.tar\/.gz$/) {
-	    $fileType = 'tar';
+    } elsif($file =~ /\.nii_\d+\.tar$/ || $file => /\.nii.gz$/ || $file => /\.nii$/ ) {
+        $fileType = 'nii';
+    } elsif($file =~ /freesurfer\.tgz$/) {
+        $fileType = 'tar';
     }
     $this->setFileData('FileType', $fileType) if defined $fileType;
     

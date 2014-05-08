@@ -1,6 +1,7 @@
 #! /usr/bin/perl
 
 use strict;
+use warnings;
 use Getopt::Tabular;
 use FileHandle;
 use File::Basename;
@@ -16,7 +17,9 @@ use NeuroDB::Notify;
 
 ## Set default option values
 my $profile     = undef;       # this should never be set unless you are in a stable production environment
-my ($megdir, @args);
+my $megdir      = undef;
+my $pic_fold    = undef;
+my (@args);
 
 ## Set the help section
 my $Usage   =   <<USAGE;
@@ -32,7 +35,8 @@ USAGE
 
 my @args_table = (
     ["-profile", "string", 1, \$profile, "name of config file in ~/.neurodb"],
-    ["-megdir",  "string", 1, \$megdir,  "session meg directory containing the .ds files to register."]
+    ["-megdir",  "string", 1, \$megdir,  "session meg directory containing the .ds files to register."],
+    ["-picdir",  "string", 1, \$pic_fold,"folder containing the png images for each MEG scan."]
                  );
 
 Getopt::Tabular::SetHelp ($Usage, '');
@@ -48,9 +52,22 @@ if ($profile && !defined @Settings::db) {
     print "\n\tERROR: You don't have a configuration file named \"$profile\" in:  $ENV{HOME}/.neurodb/ \n\n"; 
     exit 33;
 }
+if (!$megdir) {
+    print "\n\tERROR: You need to specify a session directory containing the .ds MEG files to register.\n\n";
+    exit 33;
+}
+if (!$pic_fold) {
+    print "\n\tERROR: You need to specify a directory containing the .png images to associate with the MEG files to be registered.\n\n";
+    exit 33;
+}
+
+# Remove last / from the directory if present
+$megdir  =~ s/\/$//i;    
+$pic_fold=~ s/\/$//i;
 
 ## These settings are in a config file (profile)
 my $data_dir    = $Settings::data_dir;
+my $pic_dir     = $data_dir.'/pic';
 my $prefix      = $Settings::prefix;
 my $mail_user   = $Settings::mail_user;
 my $ctf_script  = $Settings::ctf_script;
@@ -132,8 +149,9 @@ foreach my $meg (@$meg_files) {
     my ($hdr)   = &getMEGhdrInfo($megdir, $meg, $TmpDir, $ctf_script); 
 
     # Tar MEG file in $tmpdir with extracted header information ($hdr, alias *_header.meta)
-    my $mtar    = $TmpDir  . "/r2m_" . $$subjectIDsref{'CandID'} . "_" . $$subjectIDsref{'visitLabel'} . "_" . basename($meg) . ".tar.gz";
-    my $cmd     = "tar -czf $mtar $megdir/$meg";
+    chdir($megdir);
+    my $mtar    = $TmpDir  . "/r2m_" . $$subjectIDsref{'CandID'} . "_" . $$subjectIDsref{'visitLabel'} . "_" . basename($meg) . ".tgz";
+    my $cmd     = "tar -czf $mtar $meg";
     system ($cmd);
 
     # Create file object
@@ -171,6 +189,9 @@ foreach my $meg (@$meg_files) {
     $file->setFileData('AcquisitionProtocolID', $acqProtID);
     print LOG "Acq protocol ID: $acqProtID\n";
 
+    # Grep and create the pic associated to the MEG file to be registered
+    my ($pic)   = &create_pic($meg, $pic_fold);
+
     # Rename and move file
     my $moved_meg   = &move_meg($mtar, $subjectIDsref, $acqProtID, $data_dir, $prefix, \$file);
     my $file_path   = $moved_meg;
@@ -186,6 +207,8 @@ foreach my $meg (@$meg_files) {
     # Update mri_acquisition_dates table
     &update_mri_acquisition_dates($sessionID, $acqDate, \$dbh);
 
+    # Create MEG pics (use $meg_basename to find which pic to associate with registered MEG file)
+    &NeuroDB::MRI::register_pic(\$file, $data_dir, $pic_dir, $pic, $dbh);
 
 }
 
@@ -273,11 +296,14 @@ sub getHeaderParam {
         my @split   = split(':', $param);
         my $field   = $split[0];
         my $value   = $split[1];
-        $file->setParameter($field, $value);
-        $params{$field} = $value;
         if ($field =~ /Date/) {
             my ($ss,$mm,$hh,$day,$month,$year,$zone) = strptime($value);
             $date   = sprintf("%4d%02d%02d",$year+1900,$month+1,$day);
+            $file->setParameter('acquisition_date', $date);
+            $params{'acquisition_date'} = $date;
+        } else {
+            $file->setParameter($field, $value);
+            $params{$field} = $value;
         }
     }
 
@@ -322,12 +348,12 @@ sub move_meg {
 
     # figure out what to call files
     my $new_pref    = basename($meg); 
-    my $ext         = ".tar.gz";
+    my $ext         = ".tgz";
     $new_pref       =~ s/$ext//i;
 
-    my $version     = 1;
+    $version        = 1;
     my $extension   = "_" . sprintf("%03d",$version) . $ext;
-    my $new_name    = $new_pref . $extension;
+    $new_name       = $new_pref . $extension;
     $new_name       =~ s/ //;
     $new_name       =~ s/__+/_/g;
 
@@ -345,4 +371,95 @@ sub move_meg {
     print LOG "File $meg \n moved to:\n $new_path\n";
 
     return ($new_path);
+}
+
+
+
+=pod   Moved it to NeuroDB::MRI.pm
+sub register_pic {
+    my ($fileref, $data_dir, $pic_dir, $pic, $dbh) = @_;
+
+    my $file    = $$fileref;
+    my $query   = "SELECT CandID FROM session WHERE ID = ?";
+    my $sth     = $dbh->prepare($query);
+    my $where   = $file->getFileDatum('SessionID');
+    $sth->execute($where);
+    my $rowhr   = $sth->fetchrow_hashref();
+    
+    # Grep registered MEG filename and make it the basename of the pic
+    my $reg_meg     = $data_dir . '/' . $file-> getFileDatum('File');
+    my $pic_basename= basename($reg_meg);
+    $pic_basename   =~ s/\.tgz$//;
+
+    # Create Candidate pic folder if not already created
+    my $pic_cand    = $pic_dir . '/' . $rowhr->{'CandID'};
+    unless (-e $pic_cand) { 
+        system("mkdir -p -m 755 $pic_cand") == 0 or return 0; 
+    }
+
+    # Integrate File ID of the registered MEG and include it in the pic name
+    my $fileID      = $file->getFileDatum('FileID');
+    $pic_basename  .= "_$fileID" if defined ($fileID);
+    $pic_basename   =~ s/\./_/i;
+
+    # include _check.jpg in the pic name to be registered in the database
+    my $check_pic_filename  = $pic_basename . "_check.jpg";
+    my $cmd         = "mv $pic $pic_cand/$check_pic_filename"; 
+    system($cmd);
+
+    # Update mri tables
+    $file->setParameter('check_pic_filename', $rowhr->{'CandID'}.'/'.$check_pic_filename);
+}
+=cut
+
+
+sub create_pic {
+    my ($meg, $pic_fold) = @_;
+
+    my $meg_base    = basename($meg);
+    $meg_base       =~ s/\.ds//i;
+
+    # Read directory content of the folder containing all MEG pictures
+    opendir (PICDIR, $pic_fold) || die "Cannot open $pic_fold\n";
+    my @entries = readdir(PICDIR);
+    closedir (PICDIR);
+
+    # Grep the ones matching $meg_base (basename of the MEG .ds file)
+    my @files_list  = grep(/$meg_base/i, @entries);
+    # Add directory path to each element of the array
+    @files_list     = map {"$pic_fold/" . $_} @files_list;
+
+    # Get the 3D and PSD images to merge them into one picture
+    my ($meg_3d, $meg_psd);
+    foreach my $image (@files_list) {
+        if ($image =~ m/MEG_3D_/i) {
+            $meg_3d  = $image;
+        } elsif ($image =~ m/MEG_PSD_/i) {
+            $meg_psd = $image;    
+        }
+    }
+    # Determine name of the pic to be created in the tempdir $tmp
+    my $tmp = tempdir (CLEANUP => 1);
+    my $pic = $tmp . "/" . $meg_base . ".jpg";
+    # Return undef if could not find meg_3d or meg_psd 
+    # (if meg name contains noise, return $meg_psd as no 3d are created)
+    if (($meg_psd) && ($meg =~ m/Noise/i)) { 
+        my $convert = "convert $meg_psd $pic";
+        system ($convert);
+        return undef unless (-e $pic);
+        return ($pic);
+    } elsif (!$meg_3d) {
+        print LOG "ERROR: Could not find any MEG_3D images in $pic_fold matching $meg basename.\n";
+        return undef;
+    } elsif (!$meg_psd) {
+        print LOG "ERROR: Could not find any MEG_PSD images in $pic_fold matching $meg basename. \n";
+        return undef;
+    }
+
+    # Create picture to associate with MEG data
+    my $cmd = "convert $meg_3d $meg_psd +append $pic";
+    system ($cmd);
+    return undef unless (-e $pic);
+
+    return ($pic);
 }
