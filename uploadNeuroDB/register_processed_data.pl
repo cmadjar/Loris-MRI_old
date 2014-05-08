@@ -23,7 +23,8 @@ my  $scanType;
 my  $outputType;
 my  $inputFileIDs;
 my  $classifyAlgorithm;
-my  $protocolID;
+my  $associatedPic;
+my  $freesurfList;
 my  @args;
 
 my  $Usage  =   <<USAGE;
@@ -48,7 +49,8 @@ my  @args_table = (
     ["-outputType",         "string",   1,  \$outputType,       "The type of output that will be registered in the database (i.e. QCed, processed, QCReport)"],
     ["-inputFileIDs",       "string",   1,  \$inputFileIDs,       "List of input fileIDs used to obtain the file to be registered (each entries being separated by ';')"],
     ["-classifyAlgorithm",  "string",   1,  \$classifyAlgorithm,"The algorithm used to classify brain tissue in CIVET"],
-    ["-protocolID",         "string",   1,  \$protocolID,       "ID of the registered protocol that was used to process data"]
+    ["-associatedPic",      "string",   1,  \$associatedPic,    "The pic to associate with the file to be registered"],
+    ["-freesurferList",     "string",   1,  \$freesurfList,     "The freesurfer asc files associated with the freesurfer tar file to be registered (they will be imported into parameter_file table)"],
 );
 
 Getopt::Tabular::SetHelp ($Usage, '');
@@ -85,12 +87,12 @@ unless  (-r $filename)  { print "Cannot read $filename\n"; exit 1;}
 # These settings are in the config file (profile)
 my  $data_dir   =   $Settings::data_dir;
 my  $pic_dir    =   $data_dir.'/pic';
+my  $surf_dir   =   $data_dir.'/surf';
 my  $jiv_dir    =   $data_dir.'/jiv';
 my  $prefix     =   $Settings::prefix;
 
 # Needed for log file
 my  $log_dir    =   "$data_dir/logs/registerProcessed";
-system("mkdir -p -m 755 $log_dir") unless (-e $log_dir);
 my  ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst)    =   localtime(time);
 my  $date       =   sprintf("%4d-%02d-%02d_%02d:%02d:%02d",$year+1900,$mon+1,$mday,$hour,$min,$sec);
 my  $log        =   "$log_dir/registerProcessed$date.log";
@@ -209,10 +211,6 @@ $file->setFileData('PipelineDate',$pipelineDate);
 print LOG "\t -> Set PipelineDate to $pipelineDate.\n";
 $file->setFileData('OutputType',$outputType);
 print LOG "\t -> Set OutputType to $outputType.\n";
-if ($protocolID) {
-    $file->setFileData('ProcessProtocolID', $protocolID);
-    print LOG "\t -> Set ProcessProtocolID to $protocolID.\n";
-}
 
 if  (defined($classifyAlgorithm))   {
     $file->setFileData('ClassifyAlgorithm',$classifyAlgorithm);
@@ -262,6 +260,11 @@ if  ($file->getFileDatum('FileType') eq 'mnc')  {
     # make the browser pics
     print "Making browser pics\n";
     &NeuroDB::MRI::make_pics(\$file, $data_dir, $pic_dir, $Settings::horizontalPics);
+} elsif (-e $associatedPic) {
+    # Register the associated pic (use $file_basename to find which pic to associate with registered file)
+    &NeuroDB::MRI::register_pic(\$file, $data_dir, $pic_dir, $associatedPic, $dbh);
+} elsif (-e $freesurfList) {
+    &NeuroDB::MRI::register_surf(\$file, $data_dir, $surf_dir, $freesurfList, $dbh);
 }
 
 # tell the user we've done so and include the MRIID for reference
