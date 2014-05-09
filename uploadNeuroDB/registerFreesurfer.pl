@@ -30,7 +30,8 @@ USAGE
 # Define the tabl describing the command-line options
 my @args_table  = (
     ["-profile",        "string",   1,  \$profile,  "name of the config file in ~/.neurodb."],
-    ["-freesurf_dir",   "string",   1,  \$fs_dir,   "freesurfer directory containing freesurfer outputs to be registered into the database. Should be named basename(t1)_freesurfer (i.e. r2m_476534_V00_t1_001_freesurfer)."]
+    ["-freesurf_dir",   "string",   1,  \$fs_dir,   "freesurfer directory containing freesurfer outputs to be registered into the database. Should be named basename(t1)_freesurfer (i.e. r2m_476534_V00_t1_001_freesurfer)."],
+    ["-picFile",        "string",   1,  \$picFile,  "Pic file to associate with the freesurfer directory to be registered into the database"]
 );
 
 Getopt::Tabular::SetHelp ($Usage, '');
@@ -125,7 +126,6 @@ unless (-e $fs_tar) {
 # Convert surfaces, thickness and create pic to associate with freesurfer tar file
 my ($surfFiles)     = &createSurfaceFiles($fs_dir);
 #my ($picFile)       = &createPicFile($fs_dir, $TmpDir);  # Forget it, not working because of the damn -X...
-my $picFile = "/tmp/TarFreesurf-17-26-jAOW4i/both.pial.jpg";
 my ($freesurfList)  = &createFreesurfList($surfFiles, $fs_dir, $TmpDir);
 
     ##############
@@ -214,6 +214,13 @@ sub logHeader () {
 
 
 =pod
+Inputs:  - $fs_tar: freesurfer tar file to register
+         - $procDate: processing date associate with the freesurfer outputs
+         - $procTool: processing tool used to produce the freesurfer outputs
+         - $data_dir: data directory (/data/project/data)
+         - $freesurfList: freesurfer list file containing surfaces associated with freesurfer tar file to register
+         - $picFile: pic file associated with the freesurfer tar file to register
+Outputs: - $fsTarID: freesurfer file ID that was registered into the DB
 =cut
 sub registerFreesurf {
     my ($fs_tar, $procDate, $procTool, $data_dir, $freesurfList, $picFile) = @_;
@@ -255,6 +262,9 @@ sub registerFreesurf {
 
 
 =pod
+Fetches the fileID of the freesurfer tar into the files table based on md5sum.
+Inputs: - $md5sum: md5sum to use to find freesurfer fileID in the files table
+Outputs:- $fsTarID: freesurfer fileID from the files table
 =cut
 sub fetchFsTarID {
     my ($md5sum) = @_;
@@ -320,12 +330,12 @@ sub getFileID {
 Register file into the database via register_processed_data.pl with all options.
 Inputs:  - $file            = file to be registered in the database
          - $src_fileID      = FileID of the source file used to obtain the file to be registered
-         - $src_pipeline    = Pipeline used to obtain the file (DTIPrepPipeline)
-         - $src_tool        = Name and version of the tool used to obtain the file (DTIPrep or mincdiffusion)
+         - $src_pipeline    = Pipeline used to obtain the file (Freesurfer)
+         - $src_tool        = Name and version of the tool used to obtain the file (Freesurfer-version)
          - $pipelineDate    = file's creation date (= pipeline date)
-         - $coordinateSpace = file's coordinate space (= native, T1 ...)
-         - $scanType        = file's scan type (= QCedDTI, FAqc, MDqc, RGBqc...)
-         - $outputType      = file's output type (.xml, .txt, .mnc...)
+         - $coordinateSpace = file's coordinate space (= stereotaxic)
+         - $scanType        = file's scan type (= processed)
+         - $outputType      = file's output type (.tgz)
          - $inputs          = files that were used to create the file to be registered (intermediary files)
 Outputs: - $registeredFile  = file that has been registered in the database
 =cut
@@ -417,6 +427,13 @@ sub fetchRegisteredFile {
 
 
 
+=pod
+Fonction that creates and store asc surface files into a hash ($surfFiles). 
+Surfaces to be converted are: both.pial, rh.pial, lh.pial, rh.thickness, 
+lh.thickness (where pial = grey matter surfaces)
+Inputs: - $fs_dir: freesurfer directory containing the surfaces to be converted
+Output: - $surfFiles: hash containing asc surfaces files path
+=cut
 sub createSurfaceFiles {
     my ($fs_dir) = @_;
     my $surfFiles = ();
@@ -469,8 +486,11 @@ sub createSurfaceFiles {
 
 =pod
 Function that will convert surfaces and thicknesses to asc.
-Inputs: - $surface: if want to create a 
-        - $thickness: if want to create a thickness asc file
+Inputs: - $fs_dir: freesurfer directory containing surfaces to convert
+        - $surface: if want to create an asc of a surface file
+        - $asc: converted surface file in asc format
+        - $options: options to be used during conversion
+Outputs:- $asc: converted surface file in asc format
 =cut
 sub ConvertFreesurf {
     my ($fs_dir, $surface, $asc, $options) = @_;    
@@ -527,6 +547,14 @@ sub createPicFile {
 =cut
 
 
+=pod
+Create freesurfer surfaces list file to associate with tar file of the 
+freesurfer directory to be registered into the DB.
+Inputs: - $surfFiles: hash containing the list of surfaces to insert into the list file (lh.pial.asc, rh.pial.asc, lh.thickness.asc, rh.thickness.asc, both.pial.asc)
+        - $fs_dir: freesurfer directory containing the surfaces
+        - $TmpDir: tmp directory in which surfaces will be moved and list of surfaces will be created
+Outputs:- $freesurfList: txt file containing the list of surfaces to associate to the freesurfer directory to be registered
+=cut
 sub createFreesurfList { 
     my ($surfFiles, $fs_dir, $TmpDir) = @_;
 

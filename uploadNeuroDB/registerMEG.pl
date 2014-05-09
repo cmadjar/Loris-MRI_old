@@ -244,7 +244,15 @@ sub get_megs {
     return (\@meg_files);
 }
 
-
+=pod
+Function that runs octave script on the MEG file to output MEG header
+information into a .dat file.
+Inputs: - $megdir: MEG directory
+        - $meg: MEG file
+        - $tmpdir: tmp directory in which the .dat file will be created
+        - $ctf_script: octave script that parses the MEG header.
+Outputs:- $hdr: .dat file containing all MEG header information
+=cut
 sub getMEGhdrInfo {
     my ($megdir, $meg, $tmpdir, $ctf_script)   = @_;
 
@@ -282,7 +290,16 @@ sub getAcqProtID    {
     return  ($acqProtID);
 }
 
-
+=pod
+Reads MEG header file to gather information regarding the MEG acquisition 
+that will be inserted into the database.
+Inputs: - $hdr: file containing the header information
+        - $megdir: MEG directory
+        - $meg: MEG file
+        - $file: hash containing all information about the MEG file to be inserted into the database.
+Outputs:-\%params: hash containing MEG parameters
+        - $date: acquisition date of the MEG file
+=cut
 sub getHeaderParam {
     my ($hdr, $megdir, $meg, $file) = @_;
 
@@ -317,6 +334,13 @@ sub getHeaderParam {
 }
 
 
+=pod
+Function that updates the mri_acquisition_dates table if acquisition date
+for this session is already inserted.
+Inputs: - $sessionID: sessionID associated with the MEG file
+        - $acq_date: acquisition date of the MEG file
+        - $dbhr: database handler
+=cut
 sub update_mri_acquisition_dates {
     my ($sessionID, $acq_date, $dbhr) = @_;
     $dbh = $$dbhr;
@@ -333,8 +357,16 @@ sub update_mri_acquisition_dates {
     }
 }
 
-
-## move_minc(\$minc, \%minc_ids, $minc_type) -> renames and moves $minc
+=pod
+This function will rename and move the pic to the assembly folder.
+Inputs: - $meg: MEG file to move
+        - $subjectIDsref: hash containing subject ID's information
+        - $acqProtID: acquisition protocol ID from the mri_scan_type table
+        - $data_dir: root directory where to store the data (/data/project/data)
+        - $prefix: prefix to be used to rename the MEG file
+        - $fileref: hash containing informations relative to the meg file
+Outputs:- $new_path: New path of the MEG file moved to the assembly folder
+=cut
 sub move_meg {
     my ($meg, $subjectIDsref, $acqProtID, $data_dir, $prefix, $fileref) = @_;
     
@@ -375,44 +407,16 @@ sub move_meg {
 
 
 
-=pod   Moved it to NeuroDB::MRI.pm
-sub register_pic {
-    my ($fileref, $data_dir, $pic_dir, $pic, $dbh) = @_;
 
-    my $file    = $$fileref;
-    my $query   = "SELECT CandID FROM session WHERE ID = ?";
-    my $sth     = $dbh->prepare($query);
-    my $where   = $file->getFileDatum('SessionID');
-    $sth->execute($where);
-    my $rowhr   = $sth->fetchrow_hashref();
-    
-    # Grep registered MEG filename and make it the basename of the pic
-    my $reg_meg     = $data_dir . '/' . $file-> getFileDatum('File');
-    my $pic_basename= basename($reg_meg);
-    $pic_basename   =~ s/\.tgz$//;
-
-    # Create Candidate pic folder if not already created
-    my $pic_cand    = $pic_dir . '/' . $rowhr->{'CandID'};
-    unless (-e $pic_cand) { 
-        system("mkdir -p -m 755 $pic_cand") == 0 or return 0; 
-    }
-
-    # Integrate File ID of the registered MEG and include it in the pic name
-    my $fileID      = $file->getFileDatum('FileID');
-    $pic_basename  .= "_$fileID" if defined ($fileID);
-    $pic_basename   =~ s/\./_/i;
-
-    # include _check.jpg in the pic name to be registered in the database
-    my $check_pic_filename  = $pic_basename . "_check.jpg";
-    my $cmd         = "mv $pic $pic_cand/$check_pic_filename"; 
-    system($cmd);
-
-    # Update mri tables
-    $file->setParameter('check_pic_filename', $rowhr->{'CandID'}.'/'.$check_pic_filename);
-}
+=pod
+Function that creates the pic to be associated with the file registered.
+If the file is a Noise file, it will insert only the PSD image.
+Else, it will merge the 3D with the PSD image and insert the merged image.
+Inputs: - $meg: MEG file that will be used to determine filename of the pic
+        - $pic_fold: folder containing the pics to associate to MEG file
+Outputs:- undef if pic was not created
+        - $pic if pic was created and found on the file system
 =cut
-
-
 sub create_pic {
     my ($meg, $pic_fold) = @_;
 
