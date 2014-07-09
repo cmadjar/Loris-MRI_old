@@ -31,7 +31,6 @@ USAGE
 my @args_table  = (
     ["-profile",        "string",   1,  \$profile,  "name of the config file in ~/.neurodb."],
     ["-freesurf_dir",   "string",   1,  \$fs_dir,   "freesurfer directory containing freesurfer outputs to be registered into the database. Should be named basename(t1)_freesurfer (i.e. r2m_476534_V00_t1_001_freesurfer)."],
-    ["-picFile",        "string",   1,  \$picFile,  "Pic file to associate with the freesurfer directory to be registered into the database"]
 );
 
 Getopt::Tabular::SetHelp ($Usage, '');
@@ -88,7 +87,7 @@ print LOG "\n==> Freesurfer output directory is: $fs_dir\n";
     ##############
 
 # Grep source T1 FileID based on Freesurfer directory name
-my $srcFileID   = &getSourceFileID($fs_dir);
+my $srcFileID   = &getT1FileID($fs_dir);
 if (!$srcFileID) {
     print LOG "\nERROR:\n\tCould not determine source T1 used to produce $fs_dir.\n";
     exit;
@@ -124,16 +123,39 @@ unless (-e $fs_tar) {
     ### Step 4 ###
     ##############
 # Convert surfaces, thickness and create pic to associate with freesurfer tar file
-my ($surfFiles)     = &createSurfaceFiles($fs_dir);
-#my ($picFile)       = &createPicFile($fs_dir, $TmpDir);  # Forget it, not working because of the damn -X...
-my ($freesurfList)  = &createFreesurfList($surfFiles, $fs_dir, $TmpDir);
+my ($surfFiles)     = &createSurfaceFiles($fs_dir, $TmpDir);
+&createPicFile($fs_dir, $surfFiles, $TmpDir); 
+# Remove '.' in .asc files (aka lh.pial.asc will become lh_pial.asc)
+&renameASCFile($surfFiles, 'asc');   # Remove '.' in surfaces filenames
+&renameASCFile($surfFiles, 'thick'); # Remove '.' in thickness filenames
+# Remove both.gii file from $fs_dir/surf directory
+#my $gii = $fs_dir . "/surf/" . $surfFiles->{'gii'}{'both.pial'};
+#my $rm  = "rm $gii";
+#system($rm);
+#my ($freesurfList)  = &createFreesurfList($surfFiles, $fs_dir, $TmpDir);
 
     ##############
     ### Step 5 ###
     ##############
 
 # Register file into database
-my ($registered)    = &registerFreesurf($fs_tar, $procDate, $procTool, $data_dir, $freesurfList, $picFile);
+my @registered_fileID;
+my ($FSpicFile) = &createFreesurfPic($surfFiles, $TmpDir);
+foreach my $asc (keys ($surfFiles->{'asc'})) {
+    my $to_register     = $surfFiles->{'asc'}{$asc};
+    my $picFile         = $surfFiles->{'pic'}{$asc};
+    my $thickFile       = $surfFiles->{'thick'}{$asc};
+    my ($registered)    = &registerFreesurf($to_register, 
+                                            $procDate,
+                                            $procTool,
+                                            $data_dir,
+                                            $picFile,
+                                            $thickFile
+                                           );
+    push (@registered_fileID, $registered);
+}
+my ($registered)    = &registerFreesurf($fs_tar, $procDate, $procTool, $data_dir, $FSpicFile);
+push (@registered_fileID, $registered);
 
 
 exit 0;
@@ -147,7 +169,7 @@ Get file ID of the source t1 file used to obtain freesurfer output directory
 Input: - $fs_dir    = freesurfer output directory named basename(t1)_freesurfer
 Output:- $srcFileID = FileID of the t1 source file grepped from the files table 
 =cut
-sub getSourceFileID {
+sub getT1FileID {
     my ($fs_dir)    = @_;
 
     my $t1_basename = basename($fs_dir);
@@ -214,37 +236,48 @@ sub logHeader () {
 
 
 =pod
-Inputs:  - $fs_tar: freesurfer tar file to register
+Inputs:  - $file: freesurfer file to register
          - $procDate: processing date associate with the freesurfer outputs
          - $procTool: processing tool used to produce the freesurfer outputs
          - $data_dir: data directory (/data/project/data)
-         - $freesurfList: freesurfer list file containing surfaces associated with freesurfer tar file to register
          - $picFile: pic file associated with the freesurfer tar file to register
-Outputs: - $fsTarID: freesurfer file ID that was registered into the DB
+Outputs: - $fileID: freesurfer file ID that was registered into the DB
 =cut
 sub registerFreesurf {
-    my ($fs_tar, $procDate, $procTool, $data_dir, $freesurfList, $picFile) = @_;
+    my ($to_register, $procDate, $procTool, $data_dir, $picFile, $thickFile) = @_;
     
     # Check if tar file already registered in DB using md5sum
-    my $md5check        = `md5sum $fs_tar`;
+    my $md5check        = `md5sum $to_register`;
     my ($md5sum, $file) = split(' ',$md5check);
-    my ($fsTarID)       = &fetchFsTarID($md5sum);
+    my ($fileID)       = &fetchFileID($md5sum);
     # Return fsTarID if file already registered
-    return ($fsTarID)   if ($fsTarID);
+    return ($fileID)   if ($fileID);
 
     # Determine source file name and source file ID
-    my ($src_name)              = basename($fs_tar, '_freesurfer.tgz');
-    my ($src_fileID, $reg_file) = &getFileID($fs_tar, $src_name);
+    my ($src_name)              = basename($to_register);
+    $src_name   =~ s/_freesurfer\.tgz$//i;
+    $src_name   =~ s/_[a-zA-Z]+h_[a-zA-Z]+\.asc$//i;
+    my ($src_fileID, $reg_file) = &getSourceFileID($to_register, $src_name);
+    return undef unless ($src_fileID);
+
+    # Determine scan type
+    my $scanType;
+    if ($to_register =~ m/_freesurfer\.tgz$/i) {
+        $scanType   = "freesurferDir";
+    } elsif ($to_register =~ m/_lh_pial\.asc$/i) {
+        $scanType   = "leftGMsurf";
+    } elsif ($to_register =~ m/_rh_pial\.asc$/i) {
+        $scanType   = "rightGMsurf";
+    }
 
     # Set other information needed for the insertion 
     my $src_pipeline    = "freesurfer";
     my $coordinateSpace = "stereotaxic";
     my $outputType      = "processed";
-    my $scanType        = "freesurfer";
-    my $inputs          = $reg_file;  # only one input, being the t1
+    my $inputs          = $src_fileID;  # only one input, being the t1
 
     # Register freesurfer tar file
-    ($fsTarID)  = &registerFile($fs_tar, 
+    ($fileID)   = &registerFile($to_register, 
                                 $src_fileID,
                                 $src_pipeline, 
                                 $procTool,
@@ -254,10 +287,10 @@ sub registerFreesurf {
                                 $outputType,
                                 $inputs,
                                 $picFile,
-                                $freesurfList
+                                $thickFile
                                );
 
-    return ($fsTarID);
+    return ($fileID);
 }
 
 
@@ -266,7 +299,7 @@ Fetches the fileID of the freesurfer tar into the files table based on md5sum.
 Inputs: - $md5sum: md5sum to use to find freesurfer fileID in the files table
 Outputs:- $fsTarID: freesurfer fileID from the files table
 =cut
-sub fetchFsTarID {
+sub fetchFileID {
     my ($md5sum) = @_;
 
     my $query   = "SELECT f.FileID " .
@@ -298,7 +331,7 @@ Inputs: - $file     = output filename
         - $src_name = source filename (file that has been used to obtain $file)
 Outputs: - $fileID  = source File ID (file ID of the source file that has been used to obtain $file)
 =cut
-sub getFileID {
+sub getSourceFileID {
     my  ($file, $src_name) = @_;
 
     my ($fileID, $registered_file);
@@ -341,7 +374,7 @@ Outputs: - $registeredFile  = file that has been registered in the database
 =cut
 sub registerFile {
     my ($file, $src_fileID, $src_pipeline, $procTool, $procDate, 
-        $coordinateSpace, $scanType, $outputType, $inputs, $pic, $freesurfList) = @_;
+        $coordinateSpace, $scanType, $outputType, $inputs, $pic, $thickFile) = @_;
 
     # Print LOG information about the file to be registered
     print LOG "\n\t- sourceFileID is: $src_fileID\n";
@@ -353,7 +386,7 @@ sub registerFile {
     print LOG "\t- outputType is: $outputType\n";
     print LOG "\t- inputFileIDs is: $inputs\n";
     print LOG "\t- associatedPic is: $pic\n";
-    print LOG "\t- freesurfList is: $freesurfList\n";
+    print LOG "\t- associatedThickness is: $thickFile\n" if ($thickFile);
 
     # Register the file into the database using command $cmd
     my $cmd = "register_processed_data.pl " .
@@ -367,8 +400,8 @@ sub registerFile {
                     "-scanType $scanType " .
                     "-outputType $outputType  " .
                     "-inputFileIDs \"$inputs\" " .
-                    "-associatedPic \"$pic\" " .
-                    "-freesurferList  \"$freesurfList\"";
+                    "-associatedPic \"$pic\" "; 
+    $cmd   = $cmd . "-associatedThickness \"$thickFile\" " if ($thickFile);
     system($cmd);
     print LOG "\n==> Command sent:\n$cmd\n";
 
@@ -429,57 +462,60 @@ sub fetchRegisteredFile {
 
 =pod
 Fonction that creates and store asc surface files into a hash ($surfFiles). 
-Surfaces to be converted are: both.pial, rh.pial, lh.pial, rh.thickness, 
+Surfaces to be converted are: (both.pial), rh.pial, lh.pial, rh.thickness, 
 lh.thickness (where pial = grey matter surfaces)
 Inputs: - $fs_dir: freesurfer directory containing the surfaces to be converted
 Output: - $surfFiles: hash containing asc surfaces files path
 =cut
 sub createSurfaceFiles {
-    my ($fs_dir) = @_;
+    my ($fs_dir, $TmpDir)  = @_;
+
+    my $sub_base  = $TmpDir . "/" . basename($fs_dir);
+    $sub_base     =~ s/_freesurfer$//i;
     my $surfFiles = ();
     
     # 1. Move to the surfaces directory
     chdir("$fs_dir/surf");
 
     # 2. Create the combined surface
-    $surfFiles->{'gii'}->{'both_surf'}= &ConvertFreesurf($fs_dir,
-                                                         "rh.pial",                # surface 
-                                                         "both.pial.gii",           # combined surfaces in gii
-                                                         "--combinesurfs lh.pial", # options
-                                                        );
+#    $surfFiles->{'gii'}->{'both.pial'}= &ConvertFreesurf($fs_dir,
+#                                                         "rh.pial",                # surface 
+#                                                         "both.pial.gii",          # combined surfaces in gii
+#                                                         "--combinesurfs lh.pial", # options
+#                                                        );
 
     # 3. Create the combined asc file
-    my $gii = $surfFiles->{'gii'}{'both_surf'};
-    $surfFiles->{'asc'}->{'both_surf'}= &ConvertFreesurf($fs_dir,
-                                                         $gii, # surface
-                                                         "both.pial.asc"           # combined surfaces in asc
-                                                        );
-    
+#    my $gii = $surfFiles->{'gii'}{'both.pial'};
+#    $surfFiles->{'asc'}->{'both.pial.gii'}  = &ConvertFreesurf($fs_dir,
+#                                                               $gii,                        # surface
+#                                                               $sub_base . "_both.pial.asc" # combined surfaces in asc
+#                                                              );
+#    
     # 4. Create the left surface asc file
-    $surfFiles->{'asc'}->{'lh_surf'}  = &ConvertFreesurf($fs_dir,
-                                                         "lh.pial",                # left surface
-                                                         "lh.pial.asc"             # left surface in asc
+    $surfFiles->{'asc'}->{'lh.pial'}  = &ConvertFreesurf($fs_dir,
+                                                         "lh.pial",                 # left surface
+                                                         $sub_base . "_lh.pial.asc" # left surface in asc
                                                         );
 
     # 5. Create the right surface asc file
-    $surfFiles->{'asc'}->{'rh_surf'}  = &ConvertFreesurf($fs_dir,
-                                                         "rh.pial",                # right surface
-                                                         "rh.pial.asc"             # right surface in asc
+    $surfFiles->{'asc'}->{'rh.pial'}  = &ConvertFreesurf($fs_dir,
+                                                         "rh.pial",                 # right surface
+                                                         $sub_base . "_rh.pial.asc" # right surface in asc
                                                         );
 
     # 6. Create the left thickness asc file
-    $surfFiles->{'asc'}->{'lh_thick'} = &ConvertFreesurf($fs_dir,
-                                                         "lh.pial",                # left surface
-                                                         "lh.thickness.asc",       # left thickness in asc (output)
-                                                         "-c lh.thickness"         # options
-                                                        );
+    $surfFiles->{'thick'}->{'lh.pial'}= &ConvertFreesurf($fs_dir,
+                                                        "lh.pial",                         # left surface
+                                                        $sub_base . "_lh.thickness.asc",  # left thickness in asc (output)
+                                                        "-c lh.thickness"                  # options
+                                                       );
 
     # 6. Create the left thickness asc file
-    $surfFiles->{'asc'}->{'rh_thick'} = &ConvertFreesurf($fs_dir,
-                                                         "rh.pial",                # right surface
-                                                         "rh.thickness.asc",       # right thickness in asc (output)
-                                                         "-c rh.thickness"         # options
-                                                        );
+    $surfFiles->{'thick'}->{'rh.pial'}= &ConvertFreesurf($fs_dir,
+                                                        "rh.pial",                         # right surface
+                                                        $sub_base . "_rh.thickness.asc",  # right thickness in asc (output)
+                                                        "-c rh.thickness"                  # options
+                                                       );
     return ($surfFiles);
 }
 
@@ -505,48 +541,105 @@ sub ConvertFreesurf {
     print "Running $convert (...)\n";
     system($convert) unless (-e "$fs_dir/surf/$asc");
 
-    # If file is both.pial.asc, mris_convert creates 
-    # a file named both.both.pial.asc so move it back to both.pial.asc
-    if ($asc eq "both.pial.asc") {
-        my $cmd = "mv both.both.pial.asc $asc";
-        system ($cmd) unless (-e "$fs_dir/surf/$asc");
-    } elsif ($asc eq "both.pial.gii") {
-        my $cmd = "mv lh.both.pial.gii $asc";
-        system ($cmd) unless (-e "$fs_dir/surf/$asc");
-    }
+#    # If file is both.pial.asc, mris_convert creates 
+#    # a file named both.both.pial.asc so move it back to both.pial.asc
+#    if ($asc eq "both.pial.gii") {
+#        my $cmd = "mv lh.both.pial.gii $asc";
+#        system ($cmd) unless (-e "$fs_dir/surf/$asc");
+#    }
 
     # Return output
-    return undef unless (-e "$fs_dir/surf/$asc");
+    return undef unless ((-e "$fs_dir/surf/$asc") || (-e $asc));
     return ($asc);
 }
 
 
 =pod
-Not using this function because of problems encountered when running tksurfer. Needs -X and it is flaky...
+Create the pic file of the surfaces using tksurfer.
+Inputs: - $fs_dir: freesurfer directory 
+        - $surfFiles: hash of the surface files to be registered into DB
+        - $TmpDir: tmp directory with pic file
+Outputs:- $picFile: pic file of the surface
+=cut
 sub createPicFile {
-    my ($fs_dir, $TmpDir) = @_;
+    my ($fs_dir, $surfFiles, $TmpDir) = @_;
     
     # 1. Move to the surfaces directory
-    chdir("$fs_dir/surf");
+    my $surf_dir    = $fs_dir . "/surf";
+    chdir($surf_dir);
     
-    # 2. Set environment, subject and pic variables
-    $ENV{'SUBJECTS_DIR'} = dirname($fs_dir);
-    my $subject       = basename($fs_dir);
-    my $picTmp        = "$fs_dir/surf/both.pial.jpg";
-    my $picFile       = "$TmpDir/both.pial.jpg";
+    # 2. Set environment and subject variables
+    $ENV{'SUBJECTS_DIR'}= dirname($fs_dir);
+    my $subject         = basename($fs_dir);
 
-    # 3. Run tksurfer command to take a snapshot
-    my $make_pic      = "tksurfer $subject both pial.gii -snap $picTmp";
-    system($make_pic) unless ((-e $picFile) || (-e $picTmp));
-    my ($move_pic)    = "mv $picTmp $picFile";
-    system($move_pic) unless (-e $picFile);
+    # 3. Loop through surfaces and run tksurfer command to take a snapshot
+    foreach my $asc (keys ($surfFiles->{'asc'})) {
+        # a. determine pic name
+        my $basename    = $subject;
+        $basename       =~ s/_freesurfer$//i;  # Remove _freesurfer from filename to keep only subject's ID
+        $basename      .= "_" . $asc;
+        $basename       =~ s/\.gii$//i;  # Remove .gii at the end of filename
+        $basename       =~ s/\.asc$//i;  # Remove .asc at the end of filename
+        $basename       =~ s/\./_/i;     # Replace '.' by '_' in filename 
+        my $picFile     = $TmpDir . "/" . $basename . ".jpg";
+        # b. determine for which hemisphere command must be run
+        my @split       = split('\.', $asc);
+        my $hemisphere  = $split[0];
+        # c. determine for which surface.extension command must be run
+            # if name is hemisphere.surface (aka lh.pial)
+        my $surface;
+        $surface        = $split[1] if ($#split == 1);    
+#            # if name is hemisphere.surface.gii (aka both.pial.gii)
+#        $surface        = $split[1] . "." . $split[2] if ($#split == 2);  
+
+        # d. run tksurfer command
+        my $make_pic    = "tksurfer $subject $hemisphere $surface -snap $picFile";
+        system($make_pic);
+        # Somehow, the pic created by tksurfer is not readable by MRI browser
+        # so convert the pic file to jpg
+        my $convert     = "convert $picFile $picFile";
+        system($convert);
+
+        # e. append picFile to surfFiles hash
+        $surfFiles->{'pic'}{$asc}   = $picFile;
+
+    }
+}
+
+
+=pod
+Function that renames asc files to remove . in middle of the name. 
+Example: *lh.pial.asc will become *lh_pial.asc
+Inputs: - $surfFiles: hash containing asc file paths. It will be updated with the new paths once files are renamed.
+=cut
+sub renameASCFile {
+    my ($surfFiles, $fileType) = @_;
+
+    foreach my $asc (keys ($surfFiles->{$fileType})){
+        my $to_rename   = $surfFiles->{$fileType}{$asc};
+        my $new_name    = $to_rename;
+        $new_name       =~ s/\.asc$//i; #remove extension
+        $new_name       =~ s/\./_/i;
+        $new_name      .= ".asc";
+        my $mv_cmd      = "mv $to_rename $new_name";
+        system ($mv_cmd);
+        $surfFiles->{$fileType}{$asc} = $new_name if (-e $new_name);
+    }
+}
+
+sub createFreesurfPic {
+    my ($surfFiles, $TmpDir) = @_;
+
+    my $picFile = $TmpDir . "/FreesurferPic.jpg";
+    my $lhGMpic = $surfFiles->{'pic'}{'lh.pial'};
+    my $rhGMpic = $surfFiles->{'pic'}{'rh.pial'};
+
+    my $cmd     = "convert $rhGMpic $lhGMpic +append $picFile";
+    system ($cmd);
 
     return undef unless (-e $picFile);
-    return ($picFile);
+    return $picFile;
 }
-=cut
-
-
 =pod
 Create freesurfer surfaces list file to associate with tar file of the 
 freesurfer directory to be registered into the DB.
@@ -554,7 +647,6 @@ Inputs: - $surfFiles: hash containing the list of surfaces to insert into the li
         - $fs_dir: freesurfer directory containing the surfaces
         - $TmpDir: tmp directory in which surfaces will be moved and list of surfaces will be created
 Outputs:- $freesurfList: txt file containing the list of surfaces to associate to the freesurfer directory to be registered
-=cut
 sub createFreesurfList { 
     my ($surfFiles, $fs_dir, $TmpDir) = @_;
 
@@ -571,3 +663,4 @@ sub createFreesurfList {
     return undef unless (-e $freesurfList);
     return ($freesurfList);
 }
+=cut

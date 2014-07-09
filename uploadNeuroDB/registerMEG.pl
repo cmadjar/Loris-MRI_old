@@ -208,7 +208,8 @@ foreach my $meg (@$meg_files) {
     &update_mri_acquisition_dates($sessionID, $acqDate, \$dbh);
 
     # Create MEG pics (use $meg_basename to find which pic to associate with registered MEG file)
-    &NeuroDB::MRI::register_pic(\$file, $data_dir, $pic_dir, $pic, $dbh);
+    &NeuroDB::MRI::register_associated_images(\$file, $data_dir, $pic_dir, $pic, 
+                                              '_check.jpg', 'check_pic_filename', $dbh);
 
 }
 

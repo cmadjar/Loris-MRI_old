@@ -24,7 +24,7 @@ my  $outputType;
 my  $inputFileIDs;
 my  $classifyAlgorithm;
 my  $associatedPic;
-my  $freesurfList;
+my  $associatedThick;
 my  @args;
 
 my  $Usage  =   <<USAGE;
@@ -49,8 +49,8 @@ my  @args_table = (
     ["-outputType",         "string",   1,  \$outputType,       "The type of output that will be registered in the database (i.e. QCed, processed, QCReport)"],
     ["-inputFileIDs",       "string",   1,  \$inputFileIDs,       "List of input fileIDs used to obtain the file to be registered (each entries being separated by ';')"],
     ["-classifyAlgorithm",  "string",   1,  \$classifyAlgorithm,"The algorithm used to classify brain tissue in CIVET"],
-    ["-associatedPic",      "string",   1,  \$associatedPic,    "The pic to associate with the file to be registered"],
-    ["-freesurferList",     "string",   1,  \$freesurfList,     "The freesurfer asc files associated with the freesurfer tar file to be registered (they will be imported into parameter_file table)"],
+    ["-associatedPic",      "string",   1,  \$associatedPic,    "Optional: a pic to associate with the file to be registered"],
+    ["-associatedThickness","string",   1,  \$associatedThick,  "Optional: a thickness file to associate with the file to be registered"],
 );
 
 Getopt::Tabular::SetHelp ($Usage, '');
@@ -87,7 +87,7 @@ unless  (-r $filename)  { print "Cannot read $filename\n"; exit 1;}
 # These settings are in the config file (profile)
 my  $data_dir   =   $Settings::data_dir;
 my  $pic_dir    =   $data_dir.'/pic';
-my  $surf_dir   =   $data_dir.'/surf';
+my  $thick_dir  =   $data_dir.'/thick';
 my  $jiv_dir    =   $data_dir.'/jiv';
 my  $prefix     =   $Settings::prefix;
 
@@ -262,9 +262,11 @@ if  ($file->getFileDatum('FileType') eq 'mnc')  {
     &NeuroDB::MRI::make_pics(\$file, $data_dir, $pic_dir, $Settings::horizontalPics);
 } elsif (-e $associatedPic) {
     # Register the associated pic (use $file_basename to find which pic to associate with registered file)
-    &NeuroDB::MRI::register_pic(\$file, $data_dir, $pic_dir, $associatedPic, $dbh);
-} elsif (-e $freesurfList) {
-    &NeuroDB::MRI::register_surf(\$file, $data_dir, $surf_dir, $freesurfList, $dbh);
+    &NeuroDB::MRI::register_associated_images(\$file, $data_dir, $pic_dir, $associatedPic, '_check.jpg' , 'check_pic_filename', $dbh);
+}
+if ($associatedThick) {
+    # Register the associated thickness map into the database
+    &NeuroDB::MRI::register_associated_images(\$file, $data_dir, $thick_dir, $associatedThick, '_check.asc' , 'check_thick_filename', $dbh);
 }
 
 # tell the user we've done so and include the MRIID for reference

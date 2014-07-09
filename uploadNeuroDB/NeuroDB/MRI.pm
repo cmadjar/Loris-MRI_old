@@ -1274,16 +1274,16 @@ sub my_trim {
 
 
 =pod
-Function used by registerMEG and register_processed_data scripts to register a pic
-that was created via another pipeline.
+Function used by registerMEG and register_processed_data scripts to register 
+a pic or a thickness file that was created via another pipeline.
 Inputs: - $fileref: hash containing all information regarding the registered file (into the files table)
         - $data_dir: project data directory (/data/project/data)
-        - $pic_dir: root directory of the pic images in $data_dir
-        - $pic: image/pic to associate with the registered file
+        - $ass_dir: root directory of the associated images in $data_dir
+        - $ass: pic/thickness data to associate with the registered file
         - $dbh: database handler
 =cut
-sub register_pic {
-    my ($fileref, $data_dir, $pic_dir, $pic, $dbh) = @_;
+sub register_associated_images {
+    my ($fileref, $data_dir, $ass_dir, $ass, $ext, $paramType, $dbh) = @_;
 
     my $file    = $$fileref;
     my $query   = "SELECT CandID FROM session WHERE ID = ?";
@@ -1292,29 +1292,30 @@ sub register_pic {
     $sth->execute($where);
     my $rowhr   = $sth->fetchrow_hashref();
 
-    # Grep registered MEG filename and make it the basename of the pic
-    my $reg_meg     = $data_dir . '/' . $file-> getFileDatum('File');
-    my $pic_basename= basename($reg_meg);
-    $pic_basename   =~ s/\.tgz$//;
+    # Grep registered MEG filename and make it the basename of the ass
+    my $reg_file     = $data_dir . '/' . $file->getFileDatum('File');
+    my $ass_basename = basename($reg_file);
+    $ass_basename    =~ s/\.tgz$//;
+    $ass_basename    =~ s/\.asc$//;
 
-    # Create Candidate pic folder if not already created
-    my $pic_cand    = $pic_dir . '/' . $rowhr->{'CandID'};
-    unless (-e $pic_cand) {
-        system("mkdir -p -m 755 $pic_cand") == 0 or return 0;
+    # Create Candidate ass folder if not already created
+    my $ass_cand    = $ass_dir . '/' . $rowhr->{'CandID'};
+    unless (-e $ass_cand) {
+        system("mkdir -p -m 755 $ass_cand") == 0 or return 0;
     }
 
-    # Integrate File ID of the registered MEG and include it in the pic name
+    # Integrate File ID of the registered MEG and include it in the ass name
     my $fileID      = $file->getFileDatum('FileID');
-    $pic_basename  .= "_$fileID" if defined ($fileID);
-    $pic_basename   =~ s/\./_/i;
+    $ass_basename  .= "_$fileID" if defined ($fileID);
+    $ass_basename   =~ s/\./_/i;
 
-    # include _check.jpg in the pic name to be registered in the database
-    my $check_pic_filename  = $pic_basename . "_check.jpg";
-    my $cmd         = "mv $pic $pic_cand/$check_pic_filename";
+    # include _check.jpg in the ass name to be registered in the database
+    my $check_ass_filename  = $ass_basename . $ext;
+    my $cmd         = "mv $ass $ass_cand/$check_ass_filename";
     system($cmd);
 
     # Update mri tables
-    $file->setParameter('check_pic_filename', $rowhr->{'CandID'}.'/'.$check_pic_filename);
+    $file->setParameter($paramType, $rowhr->{'CandID'}.'/'.$check_ass_filename);
 }
 
 

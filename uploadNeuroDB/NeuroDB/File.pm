@@ -270,6 +270,8 @@ sub loadFileFromDisk {
         $fileType = 'nii';
     } elsif($file =~ /freesurfer\.tgz$/) {
         $fileType = 'tar';
+    } elsif($file =~ /\.asc$/) {
+        $fileType = 'asc';
     }
     $this->setFileData('FileType', $fileType) if defined $fileType;
     
