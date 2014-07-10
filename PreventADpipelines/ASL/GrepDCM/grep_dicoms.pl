@@ -75,8 +75,14 @@ if (!$grepped_dir) {
     print LOG "\nERROR: could not find any DICOM containing $pattern in $study_dir.\n";
     exit;
 } 
-
+my $moved_tar   = tar_and_move_dicom($study_dir, $grepped_dir, $TmpDir, $data_dir);
+if ($moved_tar == 1) {
     print LOG "\nERROR: could not determine pscid, dccid, visit label and date of the study $study_dir\n";
+} elsif ($moved_tar == 2) {
+    print LOG "\nERROR: DICOM folder could not be tarred.\n";    
+} else {
+    print LOG "\nDone! $moved_tar\n";
+}
 
 #############
 # Functions #
@@ -125,6 +131,8 @@ sub grep_dicom {
 }
 
 
+sub tar_and_move_dicom { 
+    my ($study_dir, $grepped_dir, $TmpDir, $data_dir) = @_;
 
     my $study_name  = basename($study_dir);
     my ($pscid, $dccid, $visit_label, $date);
@@ -137,3 +145,24 @@ sub grep_dicom {
         return 1;
     }
 
+    my $new_dir     = $data_dir . "/pipelines/ASL/raw_dicom/" .
+                      $dccid    . "/" .
+                      $visit_label;
+    make_path($new_dir, {mode => 0750});
+    my $inc         = 1;
+    my $to_tar      = basename($grepped_dir);
+    my $tarname     = $to_tar . "_" . $inc . ".tgz";
+    while (-e $tarname) {
+        $inc        =+ 1;
+        $tarname    = $to_tar . "_" . $inc . ".tgz";
+    }
+
+    chdir($TmpDir);
+    my $tar_cmd     = "tar -czf $new_dir/$tarname $to_tar";
+
+    if (-e "$new_dir/$tarname") {
+        return $tarname;    
+    } else {
+        return 2;
+    }
+}
