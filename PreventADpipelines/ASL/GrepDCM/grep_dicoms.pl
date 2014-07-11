@@ -3,6 +3,7 @@ use Getopt::Tabular;
 use FileHandle;
 use File::Basename;
 use File::Temp qw/ tempdir /;
+use File::Path qw/ make_path/;
 use FindBin;
 
 
@@ -53,6 +54,7 @@ unless (-e "$tarchiveLibraryDir/$tarchive") {
     print "\nERROR: Could not find archive $tarchive. \nPlease, make sure the path to the archive is correct. Upload will exit now.\n\n\n";
     exit 33;
 }
+$tarchive           =~ s/$tarchiveLibraryDir\///i;
 my $tarchive_path   = $tarchiveLibraryDir . "/" . $tarchive;
 
 # create the temp dir
@@ -69,7 +71,7 @@ LOG->autoflush(1);
 
 
 ## Extract tarchive in tmp directory
-my $study_dir   = $TmpDir . "/" . extract_tarchive($tarchive, $TmpDir);
+my $study_dir   = $TmpDir . "/" . extract_tarchive($tarchive_path, $TmpDir);
 my $grepped_dir = grep_dicom($study_dir, $TmpDir, $pattern);
 if (!$grepped_dir) {
     print LOG "\nERROR: could not find any DICOM containing $pattern in $study_dir.\n";
@@ -84,6 +86,8 @@ if ($moved_tar == 1) {
     print LOG "\nDone! $moved_tar\n";
 }
 
+exit 0;
+
 #############
 # Functions #
 #############
@@ -91,7 +95,7 @@ if ($moved_tar == 1) {
 # Most important function now. Gets the tarchive and extracts it so data can actually be uploaded
 sub extract_tarchive {
     my ($tarchive, $tempdir) = @_;
-    print "Extracting tarchive\n" if $verbose;
+    print "Extracting tarchive\n";
     `cd $tempdir ; tar -xf $tarchive`;
     opendir TMPDIR, $tempdir;
     my @tars = grep { /\.tar\.gz$/ && -f "$tempdir/$_" } readdir(TMPDIR);
@@ -114,16 +118,17 @@ sub grep_dicom {
     my ($study_dir, $TmpDir, $pattern) = @_;
 
     my $study_name  = basename($study_dir);
-    my $grepped_dir = $TmpDir . "/" $study_name . "_" . $pattern;
+    my $grepped_dir = $TmpDir . "/" . $study_name . "_" . $pattern;
     mkdir ($grepped_dir, 0755);
 
-    my $grep_cmd    = "grep -lr $pattern $study_name | while read f; do cp \$f $grepped_dir; done";
+    my $grep_cmd    = "grep -lr $pattern $study_dir | while read f; do cp \$f $grepped_dir; done";
     system($grep_cmd);
 
-    opendir GREPDIR, $grepped_dir;
-    my @matches     = grep { /\d[A-Za-z]/ && -f "$tempdir/$_" } readdir(GREPDIR);
+    opendir(GREPDIR, $grepped_dir);
+    my @files     = readdir(GREPDIR);
     close GREPDIR;
-    if (scalar($matches) < 1) {
+    my @matches   = grep(/[A-Za-z0-9]+/i, @files);
+    if (scalar(@matches) < 1) {
         return undef;
     } else {
         return $grepped_dir;
@@ -148,7 +153,7 @@ sub tar_and_move_dicom {
     my $new_dir     = $data_dir . "/pipelines/ASL/raw_dicom/" .
                       $dccid    . "/" .
                       $visit_label;
-    make_path($new_dir, {mode => 0750});
+    make_path($new_dir, {mode => 0750}) unless (-e $new_dir);
     my $inc         = 1;
     my $to_tar      = basename($grepped_dir);
     my $tarname     = $to_tar . "_" . $inc . ".tgz";
@@ -159,6 +164,7 @@ sub tar_and_move_dicom {
 
     chdir($TmpDir);
     my $tar_cmd     = "tar -czf $new_dir/$tarname $to_tar";
+    system($tar_cmd);
 
     if (-e "$new_dir/$tarname") {
         return $tarname;    
@@ -166,3 +172,16 @@ sub tar_and_move_dicom {
         return 2;
     }
 }
+
+
+sub logHeader () {
+    print LOG "
+----------------------------------------------------------------------------------------------------------
+                                     AUTOMATED DICOM DATA SPLITTER
+----------------------------------------------------------------------------------------------------------
+*** Date and time of upload    : $date
+*** Location of source data    : $tarchive
+*** tmp dir location           : $TmpDir
+";
+}
+
