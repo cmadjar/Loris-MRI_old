@@ -49,7 +49,7 @@ my $RegisterFiles   = undef;
 my ($list, @args);
 
 # Define the table describing the command-line options
-my @args_table      = (["-profile",             "string",   1,      \$profile,          "name of config file in ~/.neurodb."                               ],
+my @args_table      = (["-profile",             "string",   1,      \$profile,          "name of config file in ../dicom-archive/.loris_mri"                               ],
                        ["-list",                "string",   1,      \$list,             "file containing the list of raw diffusion minc files (in assembly/DCCID/Visit/mri/native)."    ],
                        ["-DTIPrepVersion",      "string",   1,      \$DTIPrepVersion,   "DTIPrep version used (if cannot be found in DTIPrep binary path)."],
                        ["-mincdiffusionVersion","string",   1,      \$mincdiffVersion,  "mincdiffusion release version used (if cannot be found in mincdiffusion scripts path.)"],
@@ -63,9 +63,9 @@ GetOptions(\@args_table, \@ARGV, \@args) || exit 1;
 
 
 # input options error checking
-{ package Settings; do "$ENV{HOME}/.neurodb/$profile" }
+{ package Settings; do "$ENV{LORIS_CONFIG}/.loris_mri/$profile" }
 if ($profile && !defined @Settings::db) {
-    print "\n\tERROR: You don't have a configuration file named \"$profile\" in:  $ENV{HOME}/.neurodb/ \n\n"; 
+    print "\n\tERROR: You don't have a configuration file named \"$profile\" in:  $ENV{LORIS_CONFIG}/.loris_mri/ \n\n"; 
     exit 33;
 }
 if (!$profile) {
@@ -95,7 +95,9 @@ my  $QCed2_step     =   $Settings::QCed2_step;
 # Needed for log file
 my  ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst)   =   localtime(time);
 my  $date   =   sprintf("%4d-%02d-%02d_%02d:%02d:%02d",$year+1900,$mon+1,$mday,$hour,$min,$sec);
-my  $log    =   $data_dir . "/logs/DTIPrep_pipeline/DTI_QC" . $date . ".log";
+my  $logdir =   $data_dir . "/logs/DTIPrep_pipeline/";
+system("mkdir -p -m 755 $logdir") unless (-e $logdir);
+my  $log    =   $logdir . "DTI_QC" . $date . ".log";
 open(LOG,">>$log");
 print LOG "Log file, $date\n";
 print LOG "DTIPrep version: $DTIPrepVersion\n\n";
@@ -936,7 +938,7 @@ sub check_and_convert_DTIPrep_postproc_outputs {
 Calls the script DTIPrepRegister.pl to register processed files into the database.
 Inputs:  - $DTIs_list:  list of native DTI files processed
          - $DTIrefs:    hash containing the processed filenames
-         - $profile:    config file (a.k.a ~/.neurodb/prod)
+         - $profile:    config file (a.k.a ./dicom-archive/.loris_mri/prod)
          - $QCoutdir:   output directory containing the processed files
          - $DTIPrepVersion:  DTIPrep version used to obtain QCed files
          - $mincdiffVersion: mincdiffusion tool version used to obtain post-processing files

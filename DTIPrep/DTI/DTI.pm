@@ -663,7 +663,7 @@ sub insertFieldList {
     my  ($arguments) =   DTI::fetch_header_info($minc_field, $raw_dti, '$1, $2');
 
     # fetches list of values with arguments starting with $minc_field. Don't remove semi_colon (last option of fetch_header_info).
-    my  ($values) =   DTI::fetch_header_info($minc_field, $raw_dti, '$3, $4, $5, $6', 1);
+    my  ($values) =   DTI::fetch_header_info($minc_field, $raw_dti, '$3, $4, $5, $6, $7', 1);
 
     my  ($arguments_list, $arguments_list_size) =   get_header_list('=', $arguments);
     my  ($values_list, $values_list_size)       =   get_header_list(';', $values);
@@ -735,9 +735,9 @@ sub fetch_header_info {
     my  $val    =   `mincheader $minc | grep $field | awk '{print $awk}' | tr '\n' ' '`;
     my  $value  =   $val    if  $val !~ /^\s*"*\s*"*\s*$/;
     if ($value) {
-        $value      =~  s/^\s+//;                           # remove leading spaces
-        $value      =~  s/\s+$//;                           # remove trailing spaces
-        $value      =~  s/;//   unless ($keep_semicolon);   # remove ";" unless $keep_semicolon is defined
+        $value  =~  s/^\s+//;                           # remove leading spaces
+        $value  =~  s/\s+$//;                           # remove trailing spaces
+        $value  =~  s/;//   unless ($keep_semicolon);   # remove ";" unless $keep_semicolon is defined
     } else {
         return undef;
     }
@@ -909,6 +909,13 @@ sub RGBpik_creation {
 
 
 
+
+
+
+
+
+
+
 =pod
 This function will check if all DTIPrep nrrd files were created and convert them into minc files with relevant header information inserted.
 - Inputs:   - $dti_file         = raw DTI dataset that was processed through DTIPrep
@@ -973,13 +980,6 @@ sub convert_DTIPrep_postproc_outputs {
     return ($nrrds_found, $mincs_created, $hdrs_inserted);
 
 }
-
-
-
-
-
-
-
 =pod
 Summarize which directions were rejected by DTIPrep for slice-wise correlations, 
 inter-lace artifacts, inter-gradient artifacts.
@@ -989,8 +989,8 @@ Outputs: - $rm_slicewise        = directions rejected due to slice wise correlat
          - $rm_interlace        = directions rejected due to interlace artifacts (number)
          - $rm_intergradient    = directions rejected due to inter-gradient artifacts (number)
 =cut
-sub getRejectedDirections {
-    my ($data_dir, $XMLReport) = @_;
+sub getRejectedDirections   {
+    my ($data_dir, $XMLReport)  =   @_;
 
     # Remove $data_dir path from $QCReport in the case it is included in the path
     $XMLReport =~ s/$data_dir//i;
@@ -1031,7 +1031,7 @@ sub getRejectedDirections {
         $tot_grads  = $tot_grads + 1;
     }
 
-    # Summary
+    # Summary hash storing all DTIPrep gradient exclusion information
     my (%summary);
     # Total number of gradients in native DTI
     $summary{'total'}{'nb'}                  = $tot_grads;
@@ -1053,9 +1053,5 @@ sub getRejectedDirections {
                                                     . join(',', @rm_interlace)
                                                     . "(" . $lace_excl . ")\'";
 
-
-
     return (\%summary);
-
 }
-

@@ -46,7 +46,7 @@ USAGE
 
 # Define the table describing the command-line options
 my  @args_table = (
-    ["-profile",              "string", 1,  \$profile,          "name of the config file in ~/.neurodb."],
+    ["-profile",              "string", 1,  \$profile,          "name of the config file in ../dicom-archive/.loris_mri."],
     ["-DTIPrep_subdir",       "string", 1,  \$DTIPrep_subdir,   "DTIPrep subdirectory storing the processed files to be registered"],
     ["-DTIPrepProtocol",      "string", 1,  \$DTIPrepProtocol,  "DTIPrep protocol used to obtain the output files"],
     ["-DTI_file",             "string", 1,  \$dti_file,         "Native DWI dataset used to obtain the output files"],
@@ -59,9 +59,9 @@ Getopt::Tabular::SetHelp ($Usage, '');
 GetOptions(\@args_table, \@ARGV, \@args) || exit 1;
 
 # input option error checking
-{ package Settings; do "$ENV{HOME}/.neurodb/$profile" }
+{ package Settings; do "$ENV{LORIS_CONFIG}/.loris_mri/$profile" }
 if  ($profile && !defined @Settings::db) {
-    print "\n\tERROR: You don't have a configuration file named '$profile' in:  $ENV{HOME}/.neurodb/ \n\n"; 
+    print "\n\tERROR: You don't have a configuration file named '$profile' in:  $ENV{LORIS_CONFIG}/.loris_mri/ \n\n"; 
     exit 33;
 }
 if (!$profile) {
@@ -90,6 +90,7 @@ if (!$DTIPrepVersion) {
 # Needed for log file
 my  $data_dir    =  $Settings::data_dir;
 my  $log_dir     =  "$data_dir/logs/DTIPrep_register";
+system("mkdir -p -m 755 $log_dir") unless (-e $log_dir);
 my  ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst)=localtime(time);
 my  $date        =  sprintf("%4d-%02d-%02d_%02d:%02d:%02d",$year+1900,$mon+1,$mday,$hour,$min,$sec);
 my  $log         =  "$log_dir/DTIregister$date.log";
@@ -807,24 +808,41 @@ sub checkPostprocessFiles {
     }
 
     # Check which tool has been used to post process DTI dataset to validate that all outputs are found in the filsystem
-    my  ($RGB_nrrd, $FA_nrrd, $MD_nrrd, $baseline_nrrd, $brain_mask_minc);
+    my  ($RGB_nrrd, $FA_nrrd, $MD_nrrd, $baseline_nrrd, $brain_mask_minc, $IDWI_nrrd, $tensor_nrrd);
     if ($DTIrefs->{$dti_file}->{'Postproc'}->{'Tool'} eq "DTIPrep") {
 
         # Store tool used for Postprocessing in %mri_files
         $mri_files->{'Postproc'}{'Tool'}    = "DTIPrep";
+
+        # File specific to DTIPrep post-processing
+        my  $IDWI_minc      =   $DTIrefs->{$dti_file}->{'Postproc'}->{'IDWI'}->{'minc'};
+        my  $tensor_minc    =   $DTIrefs->{$dti_file}->{'Postproc'}->{'tensor'}->{'minc'};
+        if ((-e $IDWI_minc) && (-e $tensor_minc)) {
+            $mri_files->{'Postproc'}{'IDWI'}{'minc'}        = $IDWI_minc; 
+            $mri_files->{'Postproc'}{'IDWI'}{'scanType'}    = 'IDWIqc'; 
+            $mri_files->{'Postproc'}{'tensor'}{'minc'}      = $tensor_minc; 
+            $mri_files->{'Postproc'}{'tensor'}{'scanType'}  = 'tensorqc'; 
+        } else {
+            print LOG "Could not find post processing isotropic minc files on the filesystem.\n";
+            return undef;
+        }
 
         # Fetches info about DTIPrep nrrd post processing files
         $RGB_nrrd       =   $DTIrefs->{$dti_file}->{'Postproc'}->{'RGB'}->{'nrrd'}; 
         $FA_nrrd        =   $DTIrefs->{$dti_file}->{'Postproc'}->{'FA'}->{'nrrd'};
         $MD_nrrd        =   $DTIrefs->{$dti_file}->{'Postproc'}->{'MD'}->{'nrrd'};
         $baseline_nrrd  =   $DTIrefs->{$dti_file}->{'Postproc'}->{'baseline'}->{'nrrd'};
+        $IDWI_nrrd      =   $DTIrefs->{$dti_file}->{'Postproc'}->{'IDWI'}->{'nrrd'};
+        $tensor_nrrd    =   $DTIrefs->{$dti_file}->{'Postproc'}->{'tensor'}->{'nrrd'};
 
         # Return minc files if all nrrd and minc outputs exist on the filesystem
-        if ((-e $RGB_nrrd) && (-e $FA_nrrd) && (-e $MD_nrrd) && (-e $baseline_nrrd)) {
+        if ((-e $RGB_nrrd) && (-e $FA_nrrd) && (-e $MD_nrrd) && (-e $baseline_nrrd) && (-e $IDWI_nrrd) && (-e $tensor_nrrd)) {
             $mri_files->{'Postproc'}{'RGB'}{'nrrd'}         = $RGB_nrrd;
             $mri_files->{'Postproc'}{'FA'}{'nrrd'}          = $FA_nrrd;
             $mri_files->{'Postproc'}{'MD'}{'nrrd'}          = $MD_nrrd;
             $mri_files->{'Postproc'}{'baseline'}{'nrrd'}    = $baseline_nrrd;
+            $mri_files->{'Postproc'}{'IDWI'}{'nrrd'}        = $IDWI_nrrd;
+            $mri_files->{'Postproc'}{'tensor'}{'nrrd'}      = $tensor_nrrd;
             foreach my $proc (keys ($mri_files->{'Postproc'})) {
                 next if ($proc eq "Tool");
                 $mri_files->{'Postproc'}{$proc}{'inputs'}   = $DTIrefs->{$dti_file}{'Postproc'}{$proc}{'inputs'};
@@ -1042,7 +1060,7 @@ Outputs: - 1 if all information has been successfully inserted
 sub insertPipelineSummary   {
     my ($minc, $data_dir, $XMLReport, $scanType)   =   @_;
 
-    my ($summary)           = &DTI::getRejectedDirections($data_dir, $XMLReport);
+    my ($summary)   =   &DTI::getRejectedDirections($data_dir, $XMLReport);
     
     # insert slice wise excluded gradients in mincheader
     my $rm_slicewise        = $summary->{'EXCLUDED'}{'slice'}{'txt'};
@@ -1051,7 +1069,6 @@ sub insertPipelineSummary   {
                                                   $rm_slicewise,
                                                   $minc,
                                                   '$3, $4, $5, $6');
-                                                  
     # insert interlace wise excluded gradients in mincheader
     my $rm_interlace        = $summary->{'EXCLUDED'}{'interlace'}{'txt'};
     my $count_interlace     = $summary->{'EXCLUDED'}{'interlace'}{'nb'};
@@ -1090,9 +1107,6 @@ sub insertPipelineSummary   {
         return undef;
     }
 }
-
-
-
 
 
 
@@ -1224,7 +1238,18 @@ sub register_DTIPrep_files {
                          && ($pipelineName)            && ($inputs));
 
     # Register nrrd file into the database
-    my ($registered_nrrd)   = &register_nrrd($nrrd,
+    # First checks if QCedDTI file exists in DB (could be identical to $noRegQCedDTI)
+    my ($registeredFile, $registeredScanType, $registered_nrrd);
+    if ($scanType eq "QCedDTI") {
+        my $md5_check       = `md5sum $nrrd`; 
+        my ($md5sum, $file) = split(' ', $md5_check);
+        ($registeredFile, 
+        $registeredScanType)= &fetchRegisteredMD5($md5sum);
+        $registered_nrrd    = $registeredFile if ($registeredScanType eq 'noRegQCedDTI');
+    }
+    # Register nrrd file unless already registered
+    unless ($registered_nrrd) {
+        ($registered_nrrd)  = &register_nrrd($nrrd,
                                              $raw_file,
                                              $data_dir,
                                              $registeredQCReportFile,
@@ -1234,13 +1259,6 @@ sub register_DTIPrep_files {
                                              $DTIPrepVersion,
                                              $scanType
                                             );
-    my ($registeredFile, $registeredScanType);
-    if ((!$registered_nrrd) && ($scanType eq "QCedDTI")) {
-        my $md5_check       = `md5sum $nrrd`; 
-        my ($md5sum, $file) = split(' ', $md5_check);
-        ($registeredFile, 
-        $registeredScanType)= &fetchRegisteredMD5($md5sum);
-        $registered_nrrd    = $registeredFile if ($registeredScanType eq 'noRegQCedDTI');
     }
     return undef    if (!$registered_nrrd);
 
