@@ -615,10 +615,10 @@ sub register_XMLFile {
     my $coordinateSpace =   "native";
     my ($scanType, $outputType);
     if ($XMLFile =~ /XMLQCResult\.xml$/i) {
-        $scanType       =   "DTIPrepXMLReport";
+        $scanType       =   "DTIPrepXMLQCReport";
         $outputType     =   "qcreport";
     } elsif ($XMLFile =~ /DTIPrepProtocol\.xml$/i) {
-        $scanType       =   "DTIPrepProtocol";
+        $scanType       =   "DTIPrepXMLProtocol";
         $outputType     =   "protocol";
     }
     # register file if all information are available
@@ -692,7 +692,7 @@ sub register_QCReport {
     my ($pipelineDate)  =   &getPipelineDate($QCReport, $data_dir, $QCReport);
 
     my $coordinateSpace =   "native";
-    my $scanType        =   "DTIPrepTxtReport";
+    my $scanType        =   "DTIPrepQCReport";
     my $outputType      =   "qcreport";
 
     if  (($QCReport)        &&  ($src_fileID)   &&
@@ -799,7 +799,7 @@ sub checkPreprocessFiles {
 
         $mri_files->{'Preproc'}{'QCed2'}{'nrrd'}     = $QCed2_nrrd;
         $mri_files->{'Preproc'}{'QCed2'}{'minc'}     = $QCed2_minc;
-        $mri_files->{'Preproc'}{'QCed2'}{'scanType'} = 'noRegQCedDTI';
+        $mri_files->{'Preproc'}{'QCed2'}{'scanType'} = 'DTIPrepNoReg';
         $mri_files->{'Preproc'}{'QCed2'}{'inputs'}   = $DTIrefs->{$dti_file}->{'Preproc'}->{'QCed2'}->{'inputs'};   
         return ($XMLProtocol, $QCReport, $XMLReport);
 
@@ -807,10 +807,10 @@ sub checkPreprocessFiles {
 
         $mri_files->{'Preproc'}{'QCed'}{'nrrd'}      = $QCed_nrrd;
         $mri_files->{'Preproc'}{'QCed'}{'minc'}      = $QCed_minc;
-        $mri_files->{'Preproc'}{'QCed'}{'scanType'}  = 'QCedDTI';
+        $mri_files->{'Preproc'}{'QCed'}{'scanType'}  = 'DTIPrepReg';
         $mri_files->{'Preproc'}{'QCed2'}{'nrrd'}     = $QCed2_nrrd;
         $mri_files->{'Preproc'}{'QCed2'}{'minc'}     = $QCed2_minc;
-        $mri_files->{'Preproc'}{'QCed2'}{'scanType'} = 'noRegQCedDTI';
+        $mri_files->{'Preproc'}{'QCed2'}{'scanType'} = 'DTIPrepNoReg';
         $mri_files->{'Preproc'}{'QCed'}{'inputs'}    = $DTIrefs->{$dti_file}->{'Preproc'}->{'QCed'}->{'inputs'};   
         $mri_files->{'Preproc'}{'QCed2'}{'inputs'}   = $DTIrefs->{$dti_file}->{'Preproc'}->{'QCed2'}->{'inputs'};   
         return ($XMLProtocol, $QCReport, $XMLReport);
@@ -867,13 +867,13 @@ sub checkPostprocessFiles {
 
     if ((-e $RGB_minc) && (-e $FA_minc) && (-e $MD_minc) && (-e $baseline_minc)) {
         $mri_files->{'Postproc'}{'RGB'}{'minc'}         = $RGB_minc;
-        $mri_files->{'Postproc'}{'RGB'}{'scanType'}     = 'RGBqc';
+        $mri_files->{'Postproc'}{'RGB'}{'scanType'}     = 'DTIPrepDTIColorFA';
         $mri_files->{'Postproc'}{'FA'}{'minc'}          = $FA_minc;
-        $mri_files->{'Postproc'}{'FA'}{'scanType'}      = 'FAqc';
+        $mri_files->{'Postproc'}{'FA'}{'scanType'}      = 'DTIPrepDTIFA';
         $mri_files->{'Postproc'}{'MD'}{'minc'}          = $MD_minc;
-        $mri_files->{'Postproc'}{'MD'}{'scanType'}      = 'MDqc';
+        $mri_files->{'Postproc'}{'MD'}{'scanType'}      = 'DTIPrepDTIMD';
         $mri_files->{'Postproc'}{'baseline'}{'minc'}    = $baseline_minc;
-        $mri_files->{'Postproc'}{'baseline'}{'scanType'}= 'DTIb0qc';
+        $mri_files->{'Postproc'}{'baseline'}{'scanType'}= 'DTIPrepBaseline';
     } else {
         print LOG "Could not find postprocessing minc files on the filesystem.\n";
         return undef;
@@ -892,11 +892,11 @@ sub checkPostprocessFiles {
         my  $tensor_minc    =   $DTIrefs->{$dti_file}->{'Postproc'}->{'tensor'}->{'minc'};
         if ((-e $IDWI_minc) && (-e $IDWIbet_minc) && (-e $tensor_minc)) {
             $mri_files->{'Postproc'}{'IDWI'}{'minc'}        = $IDWI_minc; 
-            $mri_files->{'Postproc'}{'IDWI'}{'scanType'}    = 'IDWIqc'; 
+            $mri_files->{'Postproc'}{'IDWI'}{'scanType'}    = 'DTIPrepIDWI'; 
             $mri_files->{'Postproc'}{'IDWI_bet'}{'minc'}    = $IDWIbet_minc; 
-            $mri_files->{'Postproc'}{'IDWI_bet'}{'scanType'}= 'IDWIbetqc'; 
+            $mri_files->{'Postproc'}{'IDWI_bet'}{'scanType'}= 'DTIPrepIDWIBetMask'; 
             $mri_files->{'Postproc'}{'tensor'}{'minc'}      = $tensor_minc; 
-            $mri_files->{'Postproc'}{'tensor'}{'scanType'}  = 'tensorqc'; 
+            $mri_files->{'Postproc'}{'tensor'}{'scanType'}  = 'DTIPrepDTI'; 
         } else {
             print LOG "Could not find post processing isotropic minc files on the filesystem.\n";
             return undef;
@@ -1156,11 +1156,11 @@ sub insertPipelineSummary   {
                                                   $minc, 
                                                   '$3, $4, $5, $6');
 
-    # insert total count (and intergradient count except if scanType is noRegQCedDTI
+    # insert total count (and intergradient count except if scanType is DTIPrepNoReg
     my $count_intergradient = $summary->{'EXCLUDED'}{'intergrad'}{'nb'};
     my $count_total         = $summary->{'EXCLUDED'}{'total'}{'nb'};
     my ($rm_intergradient, $insert_gradient, $total);
-    if ($scanType =~ /noRegQCedDTI/i) {
+    if ($scanType =~ /DTIPrepNoReg/i) {
         # compute total number of excluded gradients and insert it in mincheader
         $total  = $count_total - $count_intergradient;
     } else {
@@ -1181,7 +1181,7 @@ sub insertPipelineSummary   {
 
     # If all insertions went well, return 1, otherwise return undef
     if (($total_insert) && ($insert_slice) && ($insert_inter) 
-            && (($insert_gradient) || ($scanType =~ /noRegQCedDTI/i))) {
+            && (($insert_gradient) || ($scanType =~ /DTIPrepNoReg/i))) {
         return 1;
     } else {
         return undef;
@@ -1206,7 +1206,7 @@ Inputs:  - $file            = file to be registered in the database
          - $src_tool        = Name and version of the tool used to obtain the file (DTIPrep or mincdiffusion)
          - $pipelineDate    = file's creation date (= pipeline date)
          - $coordinateSpace = file's coordinate space (= native, T1 ...)
-         - $scanType        = file's scan type (= QCedDTI, FAqc, MDqc, RGBqc...)
+         - $scanType        = file's scan type (= DTIPrepReg, DTIPrepDTIFA, DTIPrepDTIMD, DTIPrepDTIColorFA...)
          - $outputType      = file's output type (.xml, .txt, .mnc...)
          - $inputs          = files that were used to create the file to be registered (intermediary files)
 Outputs: - $registeredFile  = file that has been registered in the database
@@ -1323,14 +1323,14 @@ sub register_DTIPrep_files {
                          && ($pipelineName)            && ($inputs));
 
     # Register nrrd file into the database
-    # First checks if QCedDTI file exists in DB (could be identical to $noRegQCedDTI)
+    # First checks if DTIPrepReg file exists in DB (could be identical to $DTIPrepNoReg)
     my ($registeredFile, $registeredScanType, $registered_nrrd);
-    if ($scanType eq "QCedDTI") {
+    if ($scanType eq "DTIPrepReg") {
         my $md5_check       = `md5sum $nrrd`; 
         my ($md5sum, $file) = split(' ', $md5_check);
         ($registeredFile, 
         $registeredScanType)= &fetchRegisteredMD5($md5sum);
-        $registered_nrrd    = $registeredFile if ($registeredScanType eq 'noRegQCedDTI');
+        $registered_nrrd    = $registeredFile if ($registeredScanType eq 'DTIPrepNoReg');
     }
     # Register nrrd file unless already registered
     unless ($registered_nrrd) {
