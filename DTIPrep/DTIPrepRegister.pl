@@ -941,7 +941,7 @@ sub checkPostprocessFiles {
         # Return minc files if all minc outputs exist on the filesystem
         if (-e $brain_mask_minc) {
             $mri_files->{'Postproc'}{'anat_mask_diff'}{'minc'}    = $brain_mask_minc;
-            $mri_files->{'Postproc'}{'anat_mask_diff'}{'scanType'}= 'DTImaskqc';
+            $mri_files->{'Postproc'}{'anat_mask_diff'}{'scanType'}= 'DTIPrepBetMask';
             foreach my $proc (keys ($mri_files->{'Postproc'})) {
                 next if ($proc eq "Tool");
                 $mri_files->{'Postproc'}{$proc}{'inputs'}   = $DTIrefs->{$dti_file}{'Postproc'}{$proc}{'inputs'};
