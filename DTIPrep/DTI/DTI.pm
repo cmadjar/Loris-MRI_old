@@ -255,6 +255,7 @@ sub createDTIhashref {
 
         # Raw nrrd file to be processed
         my $dti_name        = substr(basename($dti_file), 0, -4);
+        $dti_name           =~ s/_v/_V/;
         $DTIrefs->{$dti_file}->{'Raw'}->{'nrrd'} = $QCoutdir . "/" . $dti_name  . ".nrrd";
 
         # Determine preprocess outputs
@@ -287,6 +288,7 @@ sub determinePreprocOutputs {
 
     my $prot_name       = basename($DTIPrepProtocol);
     my $dti_name        = substr(basename($dti_file), 0, -4);
+    $dti_name           =~ s/_v/_V/;
 
     $DTIrefs->{$dti_file}->{'Preproc'}->{'QCProt'}->{'xml'}     = $QCoutdir . "/" . $prot_name;
     $DTIrefs->{$dti_file}->{'Preproc'}->{'QCReport'}->{'xml'}   = $QCoutdir . "/" . $dti_name  . "_XMLQCResult.xml";
@@ -360,6 +362,7 @@ sub determineDTIPrepPostprocOutputs {
     
     # Determine basename of the dti file to be processed
     my $dti_name        = substr(basename($dti_file), 0, -4);
+    $dti_name           =~ s/_v/_V/;
 
     # 1. Tensor
     # Determine suffix to used for the output
@@ -433,9 +436,11 @@ sub determineMincdiffusionPostprocOutputs {
     
     # Determine basename of the dti file to be processed
     my $dti_name        = substr(basename($dti_file), 0, -4);
+    $dti_name           =~ s/_v/_V/;
 
     # Determine basename of the anat file to be processed
     my $anat_name       = substr(basename($anat), 0, -4);
+    $anat_name          =~ s/_v/_V/;
 
     # Determine mincdiffusion output names     
     $DTIrefs->{$dti_file}->{'Postproc'}->{'FA'}->{'minc'}               = $QCoutdir . "/" . $dti_name  . $QCed_suffix . "_FA.mnc";

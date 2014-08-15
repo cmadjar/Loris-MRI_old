@@ -119,7 +119,6 @@ foreach my $nativedir (@nativedirs)   {
     $nativedir  =~ s/\/\//\//; 
     $nativedir  =~ s/\/$//;
 
-    
     #######################
     ####### Step 1: #######  Get Site, SubjectID and Visit label
     #######################
@@ -319,6 +318,7 @@ If $runDTIPrep is not defined, will check that the directory exists.
 sub getOutputDirectories {
     my ($outdir, $subjID, $visit, $DTIPrepProtocol, $runDTIPrep)    = @_;    
 
+    $visit  =~ s/v/V/;
     my ($QCoutdir)  = &DTI::createOutputFolders($outdir, $subjID, $visit, $DTIPrepProtocol, $runDTIPrep);
     if (!$QCoutdir) {
         my $verb_message = "create" if ($runDTIPrep );
